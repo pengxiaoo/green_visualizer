@@ -1,11 +1,38 @@
+import os
 import json
 import numpy as np
 import geopandas as gpd
 from shapely.geometry import Point, Polygon
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
+from scipy.ndimage import gaussian_filter1d
 import matplotlib.colors as colors
+import logging
 
+smooth_sigma = 2
+
+def smooth_coordinates(coords):
+    longitudes, latitudes = zip(*coords)
+    smooth_longs = gaussian_filter1d(longitudes, smooth_sigma)
+    smooth_lats = gaussian_filter1d(latitudes, smooth_sigma)
+    return list(zip(smooth_longs, smooth_lats))
+
+
+def get_smooth_polygon(coords):
+    count = len(coords)
+    if count < 3:
+        print(f"not enough points to create polygon: {count} points")
+        return None
+    # ensure the polygon is closed
+    if coords[0] != coords[-1]:
+        coords.append(coords[0])
+    smoothed_coords = smooth_coordinates(coords)
+    try:
+        return Polygon(smoothed_coords)
+    except ValueError as e:
+        print(f"failed to create polygon: {e}")
+        return None
+      
 class GreenVisualizer:
     def __init__(self, json_path):
         self.data = self._load_json(json_path)
@@ -30,23 +57,6 @@ class GreenVisualizer:
             elif feature['id'] == 'GreenBorder':
                 coords = feature['geometry']['coordinates']
                 self.green_border = Polygon(coords)
-    
-    def _smooth_boundary(self, x, y, window_size=5):
-        """
-        Smooth boundary coordinates using moving average.
-        
-        Args:
-            x (array-like): X coordinates of the boundary
-            y (array-like): Y coordinates of the boundary
-            window_size (int): Size of the smoothing window
-            
-        Returns:
-            tuple: Smoothed x and y coordinates
-        """
-        x, y = np.array(x), np.array(y)
-        x_smooth = np.convolve(x, np.ones(window_size)/window_size, mode='valid')
-        y_smooth = np.convolve(y, np.ones(window_size)/window_size, mode='valid')
-        return x_smooth, y_smooth
 
     def create_visualization(self, resolution=100):
         """Create visualization of the green"""
@@ -73,8 +83,10 @@ class GreenVisualizer:
             '#000080',  # navy blue
             '#0000FF',  # blue
             '#00FF00',  # green
+            '#80FF00',  # yellow-green
             '#FFFF00',  # yellow
             '#FFA500',  # orange
+            '#FF8000',  # dark orange
             '#FF0000'   # red
         ]
         custom_cmap = colors.LinearSegmentedColormap.from_list('custom', colors_list)
@@ -85,18 +97,19 @@ class GreenVisualizer:
         
         # 3. Draw gradient arrows
         dx, dy = np.gradient(zi)
-        # Downsample to reduce arrow density
         skip = (slice(None, None, 5), slice(None, None, 5))
         ax.quiver(xi[skip], yi[skip], -dx[skip], -dy[skip], 
                  scale=50, color='white', alpha=0.5)
         
         # Add smoothed boundary
         if self.green_border:
-            # Get and smooth boundary coordinates
-            x, y = self.green_border.exterior.xy
-            x_smooth, y_smooth = self._smooth_boundary(x, y)
-            # Plot smoothed boundary
-            ax.plot(x_smooth, y_smooth, 'k-', linewidth=2)
+            # Get boundary coordinates
+            coords = list(self.green_border.exterior.coords)
+            # Create smoothed polygon
+            smooth_polygon = get_smooth_polygon(coords[:-1])  # Exclude last point as it's same as first
+            if smooth_polygon:
+                x, y = smooth_polygon.exterior.xy
+                ax.plot(x, y, 'k-', linewidth=2)
         
         # Add colorbar
         plt.colorbar(contour, ax=ax, label='Elevation (m)')
