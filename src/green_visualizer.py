@@ -147,15 +147,15 @@ class GreenVisualizer:
         
         ax.quiver(xi[skip][mask_skip], yi[skip][mask_skip], 
                  -dx_normalized[skip][mask_skip], -dy_normalized[skip][mask_skip], 
-                 scale=10,          # 调整scale使箭头大小合适
+                 scale=15,          # 调整scale使箭头大小合适
                  scale_units='width',
                  units='width',
-                 width=0.05,       # 箭头线的粗细
-                 headwidth=15,       # 箭头头部的宽度
-                 headlength=15,      # 箭头头部的长度
-                 headaxislength=10, # 箭头头部底部的长度
-                 minshaft=10,        # 增加最小轴长，确保箭头有足够长的尾部
-                 minlength=5,     # 增加最小总长度
+                 width=0.005,       # 箭头线的粗细
+                 headwidth=3,       # 箭头头部的宽度
+                 headlength=5,      # 箭头头部的长度
+                 headaxislength=5, # 箭头头部底部的长度
+                 minshaft=1,        # 增加最小轴长，确保箭头有足够长的尾部
+                 minlength=1,     # 增加最小总长度
                  color='white', 
                  alpha=0.8)
         
