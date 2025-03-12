@@ -147,21 +147,18 @@ class GreenVisualizer:
         
         ax.quiver(xi[skip][mask_skip], yi[skip][mask_skip], 
                  -dx_normalized[skip][mask_skip], -dy_normalized[skip][mask_skip], 
-                 scale=30,          # 调整scale使箭头大小合适
+                 scale=10,          # 调整scale使箭头大小合适
                  scale_units='width',
                  units='width',
-                 width=0.04,       # 箭头线的粗细
-                 headwidth=6,       # 箭头头部的宽度
+                 width=0.05,       # 箭头线的粗细
+                 headwidth=10,       # 箭头头部的宽度
                  headlength=10,      # 箭头头部的长度
-                 headaxislength=3.5, # 箭头头部底部的长度
-                 minshaft=10,        # 增加最小轴长，确保箭头有足够长的尾部
-                 minlength=0.4,     # 增加最小总长度
+                 headaxislength=6, # 箭头头部底部的长度
+                 minshaft=4,        # 增加最小轴长，确保箭头有足够长的尾部
+                 minlength=1,     # 增加最小总长度
                  color='white', 
                  alpha=0.8)
         
-        ax.set_axis_off() # 移除坐标轴和边框
-        plt.margins(0, 0) # 设置边界紧贴数据
-        plt.gca().set_position([0, 0, 1, 1])  # 移除图形周围的空白区域
         plt.savefig(self.output_path, 
                 bbox_inches='tight',     # 移除多余的空白区域
                 pad_inches=0,            # 设置边距为0
