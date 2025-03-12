@@ -42,13 +42,17 @@ def get_smooth_polygon(coords):
         print(f"failed to create polygon: {e}")
         return None
      
+def inside_polygon(coord, polygon):
+    point = Point(coord)
+    return polygon and polygon.contains(point)
+       
 class GreenVisualizer:
-    def __init__(self, json_path):
+    def __init__(self, json_path, output_path):
         self.data = self._load_json(json_path)
         self.elevation_points = []
         self.green_border = None
         self.parse_data()
-        
+        self.output_path = output_path
     def _load_json(self, json_path):
         with open(json_path, 'r') as f:
             return json.load(f)
@@ -89,14 +93,22 @@ class GreenVisualizer:
         yi = np.linspace(y_min, y_max, y_resolution)
         xi, yi = np.meshgrid(xi, yi)
         
-        # Create mask for points inside the green boundary
+        # Interpolation
+        zi = griddata(points, values, (xi, yi), method='cubic')
+        
+        # Build smooth boundary from points
+        from scipy.spatial import ConvexHull
+        hull = ConvexHull(points)
+        edge_points = points[hull.vertices]
+        smoothed_edge_points = smooth_coordinates(edge_points)
+        smooth_border = get_smooth_polygon(smoothed_edge_points)
+        
+        # Create mask using smooth border
         mask = np.zeros_like(xi, dtype=bool)
         for i in range(xi.shape[0]):
             for j in range(xi.shape[1]):
-                mask[i,j] = inside_polygon((xi[i,j], yi[i,j]), self.green_border)
-        
-        # Interpolation
-        zi = griddata(points, values, (xi, yi), method='cubic')
+                point = Point(xi[i,j], yi[i,j])
+                mask[i,j] = smooth_border.contains(point) if smooth_border else True
         
         # Apply mask to interpolated values
         zi_masked = np.ma.masked_array(zi, ~mask)
@@ -126,18 +138,14 @@ class GreenVisualizer:
                  -dx[skip][mask_skip], -dy[skip][mask_skip], 
                  scale=50, color='white', alpha=0.5)
         
-        # Add colorbar
-        plt.colorbar(contour, ax=ax, label='Elevation (m)')
-        
-        # Set title and axis labels
-        ax.set_title('Green Topography')
-        ax.set_xlabel('Longitude')
-        ax.set_ylabel('Latitude')
-        
         return fig, ax
     
-    def save_plot(self, output_path='green_visualization.png'):
+    def save_plot(self):
         """Save plot to file"""
         fig, _ = self.create_visualization()
-        fig.savefig(output_path)
+        fig.savefig(self.output_path)
         plt.close(fig) 
+
+if __name__ == "__main__":
+    visualizer = GreenVisualizer("testcases/json/13.json", "testcases/map/13.png")
+    visualizer.save_plot()
