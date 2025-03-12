@@ -122,21 +122,27 @@ class GreenVisualizer:
         # Set aspect ratio to equal
         ax.set_aspect('equal')
         
-        # Draw color gradient with custom colormap
+        # 首先绘制颜色渐变
         levels = np.linspace(values.min(), values.max(), 20)
         custom_cmap = colors.LinearSegmentedColormap.from_list('custom', colors_list)
         contour = ax.contourf(xi, yi, zi_masked, levels=levels, cmap=custom_cmap)
         
-        # Draw contour lines only inside the boundary
+        # 然后绘制等高线
         ax.contour(xi, yi, zi_masked, levels=levels, colors='k', alpha=0.3)
         
-        # Draw gradient arrows only inside the boundary
+        # 最后绘制坡度箭头，调整参数使箭头更明显
         dx, dy = np.gradient(zi_masked)
-        skip = (slice(None, None, 5), slice(None, None, 5))
+        skip = (slice(None, None, 8), slice(None, None, 8))  # 增加间隔，减少箭头数量
         mask_skip = mask[skip]
         ax.quiver(xi[skip][mask_skip], yi[skip][mask_skip], 
                  -dx[skip][mask_skip], -dy[skip][mask_skip], 
-                 scale=50, color='black', alpha=1)
+                 scale=30,          # 减小scale值使箭头变长
+                 width=0.004,       # 增加箭头宽度
+                 headwidth=6,       # 增加箭头头部宽度
+                 headlength=8,      # 增加箭头头部长度
+                 headaxislength=6,  # 增加箭头轴长度
+                 color='black', 
+                 alpha=0.7)         # 调整透明度
         
         ax.set_axis_off() # 移除坐标轴和边框
         plt.margins(0, 0) # 设置边界紧贴数据
