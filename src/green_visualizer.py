@@ -7,9 +7,18 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 from scipy.ndimage import gaussian_filter1d
 import matplotlib.colors as colors
-import logging
 
 smooth_sigma = 2
+colors_list = [
+  '#000080',  # navy blue
+  '#0000FF',  # blue
+  '#00FF00',  # green
+  '#80FF00',  # yellow-green
+  '#FFFF00',  # yellow
+  '#FFA500',  # orange
+  '#FF8000',  # dark orange
+  '#FF0000'   # red
+]
 
 def smooth_coordinates(coords):
     longitudes, latitudes = zip(*coords)
@@ -32,7 +41,7 @@ def get_smooth_polygon(coords):
     except ValueError as e:
         print(f"failed to create polygon: {e}")
         return None
-      
+     
 class GreenVisualizer:
     def __init__(self, json_path):
         self.data = self._load_json(json_path)
@@ -64,52 +73,58 @@ class GreenVisualizer:
         points = np.array([[p['x'], p['y']] for p in self.elevation_points])
         values = np.array([p['z'] for p in self.elevation_points])
         
-        # Create grid
+        # Create grid with consistent spacing
         x_min, x_max = min(points[:,0]), max(points[:,0])
         y_min, y_max = min(points[:,1]), max(points[:,1])
-        xi = np.linspace(x_min, x_max, resolution)
-        yi = np.linspace(y_min, y_max, resolution)
+        
+        # Calculate the actual physical distances
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+        
+        # Create grid points with proper aspect ratio
+        x_resolution = int(resolution * (x_range / max(x_range, y_range)))
+        y_resolution = int(resolution * (y_range / max(x_range, y_range)))
+        
+        xi = np.linspace(x_min, x_max, x_resolution)
+        yi = np.linspace(y_min, y_max, y_resolution)
         xi, yi = np.meshgrid(xi, yi)
+        
+        # Create mask for points inside the green boundary
+        mask = np.zeros_like(xi, dtype=bool)
+        for i in range(xi.shape[0]):
+            for j in range(xi.shape[1]):
+                mask[i,j] = inside_polygon((xi[i,j], yi[i,j]), self.green_border)
         
         # Interpolation
         zi = griddata(points, values, (xi, yi), method='cubic')
         
-        # Create plot
-        fig, ax = plt.subplots(figsize=(10, 8))
+        # Apply mask to interpolated values
+        zi_masked = np.ma.masked_array(zi, ~mask)
         
-        # 1. Draw color gradient with custom colormap
+        # Create plot with proper aspect ratio
+        aspect_ratio = y_range / x_range
+        fig_width = 10
+        fig_height = fig_width * aspect_ratio
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+        
+        # Set aspect ratio to equal
+        ax.set_aspect('equal')
+        
+        # Draw color gradient with custom colormap
         levels = np.linspace(values.min(), values.max(), 20)
-        colors_list = [
-            '#000080',  # navy blue
-            '#0000FF',  # blue
-            '#00FF00',  # green
-            '#80FF00',  # yellow-green
-            '#FFFF00',  # yellow
-            '#FFA500',  # orange
-            '#FF8000',  # dark orange
-            '#FF0000'   # red
-        ]
         custom_cmap = colors.LinearSegmentedColormap.from_list('custom', colors_list)
-        contour = ax.contourf(xi, yi, zi, levels=levels, cmap=custom_cmap)
+        contour = ax.contourf(xi, yi, zi_masked, levels=levels, cmap=custom_cmap)
         
-        # 2. Draw contour lines
-        ax.contour(xi, yi, zi, levels=levels, colors='k', alpha=0.3)
+        # Draw contour lines only inside the boundary
+        ax.contour(xi, yi, zi_masked, levels=levels, colors='k', alpha=0.3)
         
-        # 3. Draw gradient arrows
-        dx, dy = np.gradient(zi)
+        # Draw gradient arrows only inside the boundary
+        dx, dy = np.gradient(zi_masked)
         skip = (slice(None, None, 5), slice(None, None, 5))
-        ax.quiver(xi[skip], yi[skip], -dx[skip], -dy[skip], 
+        mask_skip = mask[skip]
+        ax.quiver(xi[skip][mask_skip], yi[skip][mask_skip], 
+                 -dx[skip][mask_skip], -dy[skip][mask_skip], 
                  scale=50, color='white', alpha=0.5)
-        
-        # Add smoothed boundary
-        if self.green_border:
-            # Get boundary coordinates
-            coords = list(self.green_border.exterior.coords)
-            # Create smoothed polygon
-            smooth_polygon = get_smooth_polygon(coords[:-1])  # Exclude last point as it's same as first
-            if smooth_polygon:
-                x, y = smooth_polygon.exterior.xy
-                ax.plot(x, y, 'k-', linewidth=2)
         
         # Add colorbar
         plt.colorbar(contour, ax=ax, label='Elevation (m)')
