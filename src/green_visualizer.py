@@ -71,7 +71,7 @@ class GreenVisualizer:
                 coords = feature['geometry']['coordinates']
                 self.green_border = Polygon(coords)
 
-    def create_visualization(self, resolution=100):
+    def plot(self, resolution=100):
         """Create visualization of the green"""
         # Convert point data to numpy arrays
         points = np.array([[p['x'], p['y']] for p in self.elevation_points])
@@ -136,16 +136,19 @@ class GreenVisualizer:
         mask_skip = mask[skip]
         ax.quiver(xi[skip][mask_skip], yi[skip][mask_skip], 
                  -dx[skip][mask_skip], -dy[skip][mask_skip], 
-                 scale=50, color='white', alpha=0.5)
+                 scale=50, color='black', alpha=1)
         
-        return fig, ax
+        ax.set_axis_off() # 移除坐标轴和边框
+        plt.margins(0, 0) # 设置边界紧贴数据
+        plt.gca().set_position([0, 0, 1, 1])  # 移除图形周围的空白区域
+        plt.savefig(self.output_path, 
+                bbox_inches='tight',     # 移除多余的空白区域
+                pad_inches=0,            # 设置边距为0
+                transparent=True,         # 设置透明背景
+                dpi=300)                 # 保持高分辨率
+        plt.close()    
     
-    def save_plot(self):
-        """Save plot to file"""
-        fig, _ = self.create_visualization()
-        fig.savefig(self.output_path)
-        plt.close(fig) 
 
 if __name__ == "__main__":
     visualizer = GreenVisualizer("testcases/json/13.json", "testcases/map/13.png")
-    visualizer.save_plot()
+    visualizer.plot()
