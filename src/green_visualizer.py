@@ -130,19 +130,34 @@ class GreenVisualizer:
         # 然后绘制等高线
         ax.contour(xi, yi, zi_masked, levels=levels, colors='k', alpha=0.3)
         
-        # 最后绘制坡度箭头，调整参数使箭头更明显
+        # 计算和打印梯度信息
         dx, dy = np.gradient(zi_masked)
-        skip = (slice(None, None, 8), slice(None, None, 8))  # 增加间隔，减少箭头数量
+        print("Gradient statistics:")
+        print(f"dx range: {np.nanmin(dx)} to {np.nanmax(dx)}")
+        print(f"dy range: {np.nanmin(dy)} to {np.nanmax(dy)}")
+        
+        # 将所有箭头标准化为单位向量
+        magnitude = np.sqrt(dx**2 + dy**2)
+        magnitude = np.where(magnitude == 0, 1, magnitude)
+        dx_normalized = dx / magnitude
+        dy_normalized = dy / magnitude
+        
+        skip = (slice(None, None, 8), slice(None, None, 8))
         mask_skip = mask[skip]
+        
         ax.quiver(xi[skip][mask_skip], yi[skip][mask_skip], 
-                 -dx[skip][mask_skip], -dy[skip][mask_skip], 
-                 scale=30,          # 减小scale值使箭头变长
-                 width=0.004,       # 增加箭头宽度
-                 headwidth=6,       # 增加箭头头部宽度
-                 headlength=8,      # 增加箭头头部长度
-                 headaxislength=6,  # 增加箭头轴长度
-                 color='black', 
-                 alpha=0.7)         # 调整透明度
+                 -dx_normalized[skip][mask_skip], -dy_normalized[skip][mask_skip], 
+                 scale=30,          # 调整scale使箭头大小合适
+                 scale_units='width',
+                 units='width',
+                 width=0.04,       # 箭头线的粗细
+                 headwidth=6,       # 箭头头部的宽度
+                 headlength=10,      # 箭头头部的长度
+                 headaxislength=3.5, # 箭头头部底部的长度
+                 minshaft=10,        # 增加最小轴长，确保箭头有足够长的尾部
+                 minlength=0.4,     # 增加最小总长度
+                 color='white', 
+                 alpha=0.8)
         
         ax.set_axis_off() # 移除坐标轴和边框
         plt.margins(0, 0) # 设置边界紧贴数据
