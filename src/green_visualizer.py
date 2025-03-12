@@ -7,10 +7,12 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
 from scipy.ndimage import gaussian_filter1d
 import matplotlib.colors as colors
+from alphashape import alphashape
 
 resolution = 100
-fig_width = 10
+base_size = 10
 smooth_sigma = 2
+alpha = 0.1 # alpha值越大，形状越接近凸包; alpha值越小，形状越"贴合"点集
 elevation_levels = 40
 colors_gradient_list = [
   '#000080',  # navy blue
@@ -91,23 +93,31 @@ class GreenVisualizer:
         yi = np.linspace(y_min, y_max, y_resolution)
         xi, yi = np.meshgrid(xi, yi)
         
-        # Create plot with proper aspect ratio
-        aspect_ratio = y_range / x_range
-        fig_height = fig_width * aspect_ratio
-        _, ax = plt.subplots(figsize=(fig_width, fig_height))
-        ax.set_aspect('equal') # todo: need to consider polar coordinate. refer to course map drawing.
+        # Adjust the aspect ratio based on the center latitude
+        center_lat = y_min + y_max / 2
+        center_lat_rad = np.pi * center_lat / 180
+        aspect_ratio = 1 / np.cos(center_lat_rad)
+        fig_width = base_size
+        fig_height = base_size * aspect_ratio
+        _, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor='none')
+        ax.set_aspect('equal') 
         
-        # todo: Build smooth boundary from points. ConvexHull is not good enough.
-        from scipy.spatial import ConvexHull
-        hull = ConvexHull(xys)
-        edge_points = xys[hull.vertices]
-        smoothed_edge_points = smooth_coordinates(edge_points)
+        # todo: Improve the edge smoothing
+        points = [(x, y) for x, y in xys]
+        alpha_shape = alphashape(points, alpha)
+        # If alpha shape is MultiPolygon, take the largest one
+        if alpha_shape.geom_type == 'MultiPolygon':
+            alpha_shape = max(alpha_shape, key=lambda x: x.area)
+        boundary_coords = list(alpha_shape.exterior.coords)
+        smoothed_edge_points = smooth_coordinates(boundary_coords)
         smooth_border = get_smooth_polygon(smoothed_edge_points)
+        # Create mask
         mask = np.zeros_like(xi, dtype=bool)
         for i in range(xi.shape[0]):
             for j in range(xi.shape[1]):
                 point = Point(xi[i,j], yi[i,j])
                 mask[i,j] = smooth_border.contains(point) if smooth_border else True
+        # Interpolation and mask application
         zi = griddata(xys, zs, (xi, yi), method='cubic')
         zi_masked = np.ma.masked_array(zi, ~mask)
         
@@ -119,7 +129,7 @@ class GreenVisualizer:
         # Paint contour lines
         ax.contour(xi, yi, zi_masked, levels=levels, colors='k', alpha=0.3)
         
-        # todo: Draw gradient arrows. needs to be optimized
+        # todo: gradient arrows looks wrong
         # Calculate and print gradient information
         dx, dy = np.gradient(zi_masked)
         # Normalize all arrows to unit vectors
@@ -132,18 +142,22 @@ class GreenVisualizer:
         # ax.quiver: https://matplotlib.org/stable/api/_as_gen/matplotlib.axes.Axes.quiver.html
         ax.quiver(xi[skip][mask_skip], yi[skip][mask_skip], 
                  -dx_normalized[skip][mask_skip], -dy_normalized[skip][mask_skip], 
-                 scale=15,          # Global scale
+                 scale=15,          # Global scale factor
                  scale_units='width',
                  units='width',
                  width=0.005,       # Base unit
                  headwidth=8,       # Arrow head width
                  headlength=5,      # Arrow head length
-                 headaxislength=2, # Arrow head bottom length
+                 headaxislength=2,  # Arrow head bottom length
                  minshaft=1,        
                  minlength=10,     
                  color='white', 
                  alpha=1)
-        
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
         plt.savefig(self.output_path, 
                 bbox_inches='tight',     # Remove extra white space
                 pad_inches=0,            # Set margin to 0
@@ -153,5 +167,7 @@ class GreenVisualizer:
     
 
 if __name__ == "__main__":
-    visualizer = GreenVisualizer("testcases/json/13.json", "testcases/map/13.png")
+    json_file = "testcases/json/13.json"
+    png_file = json_file.replace(".json", ".png").replace("/json", "/map")
+    visualizer = GreenVisualizer(json_file, png_file)
     visualizer.plot()
