@@ -15,13 +15,10 @@ elevation_levels = 40
 arrow_padding = 5
 arrow_interval = 6
 colors_gradient_list = [
-    "#000080",  # navy blue
     "#0000FF",  # blue
     "#00FF00",  # green
-    "#80FF00",  # yellow-green
     "#FFFF00",  # yellow
     "#FFA500",  # orange
-    "#FF8000",  # dark orange
     "#FF0000",  # red
 ]
 
@@ -133,20 +130,15 @@ class GreenVisualizer:
         # Paint contour lines
         ax.contour(xi, yi, zi_masked, levels=levels, colors="k", alpha=0.3)
 
-        # todo: Improve the gradient arrows
-        # Calculate 3D gradient and project to xy-plane
+        # Paint gradient arrows
         dx, dy = np.gradient(zi_masked)
         x_spacing = x_range / x_grid_num
         y_spacing = y_range / y_grid_num
         dx = dx / x_spacing 
         dy = dy / y_spacing
-        dx_3d = dx
-        dy_3d = dy
-        dz_3d = np.ones_like(dx) 
-        magnitude_3d = np.sqrt(dx_3d**2 + dy_3d**2 + dz_3d**2)
-        magnitude_3d = np.where(magnitude_3d == 0, 1, magnitude_3d)
-        dx_normalized = dx_3d / magnitude_3d
-        dy_normalized = dy_3d / magnitude_3d
+        magnitude = np.sqrt(dx**2 + dy**2)
+        dx_normalized = dx / magnitude
+        dy_normalized = dy / magnitude
         skip = (
             slice(arrow_padding, -arrow_padding, arrow_interval),
             slice(arrow_padding, -arrow_padding, arrow_interval),
@@ -156,8 +148,8 @@ class GreenVisualizer:
         ax.quiver(
             xi[skip][mask_skip],  # x coordinate of start point
             yi[skip][mask_skip],  # y coordinate of start point
-            -dx_normalized[skip][mask_skip],  # dx in arrow direction
-            -dy_normalized[skip][mask_skip],  # dy in arrow direction
+            -dy_normalized[skip][mask_skip],  # -dy/dx points to lower point
+            -dx_normalized[skip][mask_skip],  
             scale=15,  # global scale factor
             scale_units="width",
             units="width",
