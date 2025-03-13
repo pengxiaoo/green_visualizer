@@ -7,10 +7,10 @@ from scipy.ndimage import gaussian_filter1d
 import matplotlib.colors as colors
 from alphashape import alphashape
 
-resolution = 120
+base_grid_num = 120
 base_size = 10
 smooth_sigma = 2
-alpha = 1  # alpha值越大，形状越接近凸包; alpha值越小，形状越"贴合"点集
+alpha = 0.1  # 0~1, the smaller the alpha, the smoother the edge
 elevation_levels = 40
 arrow_padding = 5
 arrow_interval = 6
@@ -89,10 +89,10 @@ class GreenVisualizer:
         y_min, y_max = min(xys[:, 1]), max(xys[:, 1])
         x_range = x_max - x_min
         y_range = y_max - y_min
-        x_resolution = int(resolution * (x_range / max(x_range, y_range)))
-        y_resolution = int(resolution * (y_range / max(x_range, y_range)))
-        xi = np.linspace(x_min, x_max, x_resolution)
-        yi = np.linspace(y_min, y_max, y_resolution)
+        x_grid_num = int(base_grid_num * (x_range / max(x_range, y_range)))
+        y_grid_num = int(base_grid_num * (y_range / max(x_range, y_range)))
+        xi = np.linspace(x_min, x_max, x_grid_num)
+        yi = np.linspace(y_min, y_max, y_grid_num)
         xi, yi = np.meshgrid(xi, yi)
 
         # Adjust the aspect ratio based on the center latitude
@@ -136,30 +136,17 @@ class GreenVisualizer:
         # todo: Improve the gradient arrows
         # Calculate 3D gradient and project to xy-plane
         dx, dy = np.gradient(zi_masked)
-
-        # 计算网格间距
-        x_spacing = (x_max - x_min) / (xi.shape[1] - 1)
-        y_spacing = (y_max - y_min) / (xi.shape[0] - 1)
-
-        # 考虑实际物理距离的梯度
-        dx = dx / x_spacing  # 转换为实际距离的变化率
+        x_spacing = x_range / x_grid_num
+        y_spacing = y_range / y_grid_num
+        dx = dx / x_spacing 
         dy = dy / y_spacing
-
-        # 在每个点计算三维梯度向量并投影到xy平面
-        # 假设z轴单位与xy轴相同
-        # 梯度向量为 (-dx, -dy, -1)，需要归一化并投影
         dx_3d = dx
         dy_3d = dy
-        dz_3d = np.ones_like(dx)  # z方向单位向量
-
-        # 计算三维向量的长度用于归一化
+        dz_3d = np.ones_like(dx) 
         magnitude_3d = np.sqrt(dx_3d**2 + dy_3d**2 + dz_3d**2)
         magnitude_3d = np.where(magnitude_3d == 0, 1, magnitude_3d)
-
-        # 归一化三维向量
         dx_normalized = dx_3d / magnitude_3d
         dy_normalized = dy_3d / magnitude_3d
-
         skip = (
             slice(arrow_padding, -arrow_padding, arrow_interval),
             slice(arrow_padding, -arrow_padding, arrow_interval),
