@@ -129,14 +129,32 @@ class GreenVisualizer:
         # Paint contour lines
         ax.contour(xi, yi, zi_masked, levels=levels, colors='k', alpha=0.3)
         
-        # todo: gradient arrows looks wrong
-        # Calculate and print gradient information
+        # Calculate 3D gradient and project to xy-plane
         dx, dy = np.gradient(zi_masked)
-        # Normalize all arrows to unit vectors
-        magnitude = np.sqrt(dx**2 + dy**2)
-        magnitude = np.where(magnitude == 0, 1, magnitude)
-        dx_normalized = dx / magnitude
-        dy_normalized = dy / magnitude
+        
+        # 计算网格间距
+        x_spacing = (x_max - x_min) / (xi.shape[1] - 1)
+        y_spacing = (y_max - y_min) / (xi.shape[0] - 1)
+        
+        # 考虑实际物理距离的梯度
+        dx = dx / x_spacing  # 转换为实际距离的变化率
+        dy = dy / y_spacing
+        
+        # 在每个点计算三维梯度向量并投影到xy平面
+        # 假设z轴单位与xy轴相同
+        # 梯度向量为 (-dx, -dy, -1)，需要归一化并投影
+        dx_3d = dx
+        dy_3d = dy
+        dz_3d = np.ones_like(dx)  # z方向单位向量
+        
+        # 计算三维向量的长度用于归一化
+        magnitude_3d = np.sqrt(dx_3d**2 + dy_3d**2 + dz_3d**2)
+        magnitude_3d = np.where(magnitude_3d == 0, 1, magnitude_3d)
+        
+        # 归一化三维向量
+        dx_normalized = dx_3d / magnitude_3d
+        dy_normalized = dy_3d / magnitude_3d
+        
         skip = (slice(None, None, 6), slice(None, None, 6))
         mask_skip = mask[skip]
         # ax.quiver: https://matplotlib.org/stable/api/_as_gen/matplotlib.axes.Axes.quiver.html
