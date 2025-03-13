@@ -1,14 +1,15 @@
 import json
-import numpy as np
 from shapely.geometry import Point, Polygon
+from alphashape import alphashape
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 from scipy.interpolate import griddata
 from scipy.ndimage import gaussian_filter1d
-import matplotlib.colors as colors
-from alphashape import alphashape
+import numpy as np
+
 
 base_grid_num = 120
-base_size = 10
+base_canvas_size = 10
 smooth_sigma = 2
 alpha = 0.1  # 0~1, the smaller the alpha, the smoother the edge
 elevation_levels = 40
@@ -96,8 +97,8 @@ class GreenVisualizer:
         center_lat = y_min + y_max / 2
         center_lat_rad = np.pi * center_lat / 180
         aspect_ratio = 1 / np.cos(center_lat_rad)
-        fig_width = base_size
-        fig_height = base_size * aspect_ratio
+        fig_width = base_canvas_size
+        fig_height = base_canvas_size * aspect_ratio
         _, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
         ax.set_aspect("equal")
 
