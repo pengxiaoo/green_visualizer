@@ -53,12 +53,11 @@ def inside_polygon(coord, polygon):
 
 
 class GreenVisualizer:
-    def __init__(self, json_path, output_path):
-        self.data = self._load_json(json_path)
+    def __init__(self):
+        self.data = None
         self.elevation_points = []
         self.green_border = None
-        self.parse_data()
-        self.output_path = output_path
+        self.output_path = None
 
     def _load_json(self, json_path):
         with open(json_path, "r") as f:
@@ -94,11 +93,11 @@ class GreenVisualizer:
         xi, yi = np.meshgrid(xi, yi)
 
         # Adjust the aspect ratio based on the center latitude
-        center_lat = y_min + y_max / 2
+        center_lat = (y_min + y_max) / 2
         center_lat_rad = np.pi * center_lat / 180
         aspect_ratio = 1 / np.cos(center_lat_rad)
         fig_width = base_canvas_size
-        fig_height = base_canvas_size * aspect_ratio
+        fig_height = int(base_canvas_size * aspect_ratio)
         _, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
         ax.set_aspect("equal")
 
@@ -135,7 +134,7 @@ class GreenVisualizer:
         dx, dy = np.gradient(zi_masked)
         x_spacing = x_range / x_grid_num
         y_spacing = y_range / y_grid_num
-        dx = dx / x_spacing 
+        dx = dx / x_spacing
         dy = dy / y_spacing
         magnitude = np.sqrt(dx**2 + dy**2)
         dx_normalized = dx / magnitude
@@ -150,7 +149,7 @@ class GreenVisualizer:
             xi[skip][mask_skip],  # x coordinate of start point
             yi[skip][mask_skip],  # y coordinate of start point
             -dy_normalized[skip][mask_skip],  # -dy/dx points to lower point
-            -dx_normalized[skip][mask_skip],  
+            -dx_normalized[skip][mask_skip],
             scale=15,  # global scale factor
             scale_units="width",
             units="width",
@@ -177,9 +176,22 @@ class GreenVisualizer:
         )
         plt.close()
 
+    def process_file(self, json_path, output_path):
+        """Process single file"""
+        self.data = self._load_json(json_path)
+        self.elevation_points = []
+        self.green_border = None
+        self.output_path = output_path
+        self.parse_data()
+        self.plot()
+
 
 if __name__ == "__main__":
-    json_file = "testcases/json/13.json"
-    png_file = json_file.replace(".json", ".png").replace("/json", "/map")
-    visualizer = GreenVisualizer(json_file, png_file)
-    visualizer.plot()
+    visualizer = GreenVisualizer()
+    try:
+        for i in range(1, 19):
+            json_file = f"testcases/json/{i}.json"
+            png_file = json_file.replace(".json", ".png").replace("/json", "/map")
+            visualizer.process_file(json_file, png_file)
+    finally:
+        plt.close("all")
