@@ -6,6 +6,7 @@ import matplotlib.colors as colors
 from scipy.interpolate import griddata
 from scipy.ndimage import gaussian_filter1d
 import numpy as np
+from scipy.interpolate import splprep, splev
 
 
 base_grid_num = 120
@@ -75,6 +76,45 @@ class GreenVisualizer:
                 coords = feature["geometry"]["coordinates"]
                 self.green_border = Polygon(coords)
 
+    def plot_raw_data_2(self):
+        """Create visualization of the raw data"""
+        xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
+        zs = np.array([p["z"] for p in self.elevation_points])
+        x_min, x_max = min(xys[:, 0]), max(xys[:, 0])
+        y_min, y_max = min(xys[:, 1]), max(xys[:, 1])
+        # Adjust the aspect ratio based on the center latitude
+        center_lat = (y_min + y_max) / 2
+        center_lat_rad = np.pi * center_lat / 180
+        aspect_ratio = 1 / np.cos(center_lat_rad)
+        fig_width = base_canvas_size
+        fig_height = int(base_canvas_size * aspect_ratio)
+        _, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
+        ax.set_aspect("equal")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        
+        # 找到边界点
+        from scipy.spatial import ConvexHull
+        hull = ConvexHull(xys)
+        boundary_points = xys[hull.vertices]
+        # build polygon
+        from shapely.geometry import Polygon
+        boundary_polygon = Polygon(boundary_points)
+        # 绘制边界线 白色
+        ax.plot(boundary_points[:, 0], boundary_points[:, 1], 'w-', linewidth=1, alpha=0.5)
+        
+        plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+        plt.savefig(
+            self.output_path,
+            bbox_inches="tight",  # Remove extra white space
+            pad_inches=0,  # Set margin to 0
+            transparent=True,  # Set transparent background
+            dpi=300,  # Keep high resolution
+        )
+        plt.close()
+        
     def plot_raw_data(self):
         """Create visualization of the raw data"""
         xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
@@ -212,7 +252,7 @@ class GreenVisualizer:
         self.green_border = None
         self.output_path = output_path
         self.parse_data()
-        self.plot_raw_data()
+        self.plot_raw_data_2()
 
 
 if __name__ == "__main__":
@@ -220,7 +260,7 @@ if __name__ == "__main__":
     try:
         for i in range(1, 19):
             json_file = f"testcases/json/{i}.json"
-            png_file = json_file.replace(".json", "_raw.png").replace("/json", "/map")
+            png_file = json_file.replace(".json", "_edge.png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
     finally:
         plt.close("all")
