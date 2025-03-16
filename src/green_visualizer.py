@@ -1,25 +1,13 @@
 import json
-import math
-from shapely.geometry import Point, Polygon, MultiPoint, LineString, MultiLineString
-from shapely.ops import unary_union, polygonize
-from alphashape import alphashape, optimizealpha
+from shapely.geometry import Point, Polygon
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
-from scipy.interpolate import griddata, splprep, splev
-from scipy.ndimage import gaussian_filter1d
-from scipy.spatial import Delaunay, distance, ConvexHull, KDTree
+from scipy.interpolate import griddata
 import numpy as np
-from sklearn.cluster import DBSCAN
-from sklearn.neighbors import NearestNeighbors
 
 base_grid_num = 120
 base_canvas_size = 10
 smooth_sigma = 2
-alpha = 0.005  # 非凸程度，越小越凹
-s_spline = 0.0001  # 样条平滑因子，越小越贴合，越大越圆
-unify_buffer = 0.0
-num_points = 800
-smooth_buffer = 0
 elevation_levels = 40
 arrow_padding = 5
 arrow_interval = 6
@@ -55,6 +43,43 @@ class GreenVisualizer:
                 coords = feature["geometry"]["coordinates"]
                 self.green_border = Polygon(coords)
 
+    def smooth_and_densify_edge(self) -> Polygon:
+        """
+        对边界进行加密处理
+        基于平均距离进行线性插值加密
+        Returns:
+            Polygon: 加密后的边界多边形
+        """
+        boundary_polygon = self.green_border
+        bx, by = boundary_polygon.exterior.xy
+        boundary_points = np.column_stack([bx, by])
+        
+        # 计算相邻点之间的距离
+        distances = np.sqrt(np.sum(np.diff(boundary_points, axis=0)**2, axis=1))
+        d_avg = np.mean(distances)
+        
+        # 基于平均距离进行插值
+        dense_points = []
+        for i in range(len(boundary_points)):
+            p1 = boundary_points[i]
+            p2 = boundary_points[(i + 1) % len(boundary_points)]  # 循环到第一个点
+            
+            dense_points.append(p1)
+            d = np.sqrt(np.sum((p2 - p1)**2))
+            
+            if d > d_avg:
+                # 计算需要插入的点数
+                n_points = int(d / d_avg) * 2
+                # 生成插值点
+                for j in range(1, n_points):
+                    t = j / n_points
+                    interpolated_point = p1 + t * (p2 - p1)
+                    dense_points.append(interpolated_point)
+        
+        dense_points = np.array(dense_points)
+        print(f"加密点数: {len(boundary_points)} -> {len(dense_points)}")
+        return Polygon(dense_points)
+
     def plot_edge(self):
         xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
         zs = np.array([p["z"] for p in self.elevation_points])
@@ -74,10 +99,11 @@ class GreenVisualizer:
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(y_min, y_max)
 
-        # 获取边界多边形并绘制
-        boundary_polygon = self.green_border
+        # 绘制点
         plt.scatter(xys[:, 0], xys[:, 1], marker='+', label='Points')
-        bx, by = boundary_polygon.exterior.xy
+        # 绘制边界
+        smooth_polygon = self.smooth_and_densify_edge()
+        bx, by = smooth_polygon.exterior.xy
         plt.scatter(bx, by, marker='o', label='Boundary', color='red')
         plt.gca().set_aspect('equal', adjustable='box')
         plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
@@ -114,8 +140,9 @@ class GreenVisualizer:
         _, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
         ax.set_aspect("equal")
 
-        # todo: Improve the edge smoothing
-        boundary_polygon = self.green_border
+        # 使用平滑后的边界
+        boundary_polygon = self.smooth_and_densify_edge()
+        
         # Create mask
         mask = np.zeros_like(xi, dtype=bool)
         for i in range(xi.shape[0]):
@@ -189,7 +216,7 @@ class GreenVisualizer:
         self.green_border = None
         self.output_path = output_path
         self.parse_data()
-        self.plot()
+        self.plot_edge()
 
 
 if __name__ == "__main__":
@@ -197,7 +224,7 @@ if __name__ == "__main__":
     try:
         for i in range(1, 19):
             json_file = f"testcases/json/{i}.json"
-            png_file = json_file.replace(".json", ".png").replace("/json", "/map")
+            png_file = json_file.replace(".json", "_edge.png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
     finally:
         plt.close("all")
