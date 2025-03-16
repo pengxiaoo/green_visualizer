@@ -32,12 +32,6 @@ colors_gradient_list = [
 ]
 
 
-def get_boundary_polygon(xys: np.ndarray, alpha=1) -> Polygon:
-    shape = alphashape(xys, alpha)
-    boundary_coords = np.array(shape.exterior.coords)
-    return Polygon(boundary_coords)
-
-
 class GreenVisualizer:
     def __init__(self):
         self.data = None
@@ -81,7 +75,7 @@ class GreenVisualizer:
         ax.set_ylim(y_min, y_max)
 
         # 获取边界多边形并绘制
-        boundary_polygon = get_boundary_polygon(xys)
+        boundary_polygon = self.green_border
         plt.scatter(xys[:, 0], xys[:, 1], marker='+', label='Points')
         bx, by = boundary_polygon.exterior.xy
         plt.scatter(bx, by, marker='o', label='Boundary', color='red')
@@ -121,7 +115,7 @@ class GreenVisualizer:
         ax.set_aspect("equal")
 
         # todo: Improve the edge smoothing
-        boundary_polygon = get_boundary_polygon(xys)
+        boundary_polygon = self.green_border
         # Create mask
         mask = np.zeros_like(xi, dtype=bool)
         for i in range(xi.shape[0]):
@@ -195,7 +189,7 @@ class GreenVisualizer:
         self.green_border = None
         self.output_path = output_path
         self.parse_data()
-        self.plot_edge()
+        self.plot()
 
 
 if __name__ == "__main__":
@@ -203,7 +197,7 @@ if __name__ == "__main__":
     try:
         for i in range(1, 19):
             json_file = f"testcases/json/{i}.json"
-            png_file = json_file.replace(".json", "_edge.png").replace("/json", "/map")
+            png_file = json_file.replace(".json", ".png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
     finally:
         plt.close("all")
