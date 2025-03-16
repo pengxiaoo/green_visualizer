@@ -68,7 +68,6 @@ class GreenVisualizer:
                 self.green_border = Polygon(coords)
 
     def plot_edge(self):
-        """Create visualization of the raw data"""
         xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
         zs = np.array([p["z"] for p in self.elevation_points])
         x_min, x_max = min(xys[:, 0]), max(xys[:, 0])
@@ -92,7 +91,7 @@ class GreenVisualizer:
         plt.scatter(xys[:, 0], xys[:, 1], marker='o', label='Points')
         if boundary_polygon.geom_type == "Polygon":
             bx, by = boundary_polygon.exterior.xy
-            plt.plot(bx, by, label='Boundary')
+            plt.plot(bx, by, label='Boundary', linewidth=1.5, alpha=1.0, zorder=10)
         plt.gca().set_aspect('equal', adjustable='box')
         plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
         plt.savefig(
@@ -105,14 +104,12 @@ class GreenVisualizer:
         plt.close()
 
     def plot(self):
-        """Create visualization of the green"""
         # Convert point data to numpy arrays
         xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
         zs = np.array([p["z"] for p in self.elevation_points])
-
-        # Create 2d grid points with consistent spacing
         x_min, x_max = min(xys[:, 0]), max(xys[:, 0])
         y_min, y_max = min(xys[:, 1]), max(xys[:, 1])
+        # Create 2d grid points with consistent spacing
         x_range = x_max - x_min
         y_range = y_max - y_min
         x_grid_num = int(base_grid_num * (x_range / max(x_range, y_range)))
@@ -211,7 +208,7 @@ class GreenVisualizer:
 if __name__ == "__main__":
     visualizer = GreenVisualizer()
     try:
-        for i in range(3, 4):
+        for i in range(1, 19):
             json_file = f"testcases/json/{i}.json"
             png_file = json_file.replace(".json", "_edge.png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
