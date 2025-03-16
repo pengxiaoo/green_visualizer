@@ -32,10 +32,8 @@ colors_gradient_list = [
 ]
 
 
-def get_boundary_polygon(xys: np.ndarray, alpha=0) -> Polygon:
+def get_boundary_polygon(xys: np.ndarray, alpha=1) -> Polygon:
     shape = alphashape(xys, alpha)
-    if shape.geom_type == 'MultiPolygon':
-        shape = max(shape, key=lambda s: s.area)
     boundary_coords = np.array(shape.exterior.coords)
     return Polygon(boundary_coords)
 
