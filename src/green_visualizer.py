@@ -1,18 +1,24 @@
 import json
-from shapely.geometry import Point, Polygon
+import math
+from shapely.geometry import Point, Polygon, MultiPoint, LineString
+from shapely.ops import unary_union, polygonize
 from alphashape import alphashape
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, splprep, splev
 from scipy.ndimage import gaussian_filter1d
+from scipy.spatial import Delaunay, distance
 import numpy as np
-from scipy.interpolate import splprep, splev
 
 
 base_grid_num = 120
 base_canvas_size = 10
 smooth_sigma = 2
-alpha = 0.1  # 0~1, the smaller the alpha, the smoother the edge
+alpha = 0.005     # 非凸程度，越小越凹
+s_spline = 0.0001 # 样条平滑因子，越小越贴合，越大越圆
+unify_buffer = 0.0
+num_points = 800
+smooth_buffer = 0
 elevation_levels = 40
 arrow_padding = 5
 arrow_interval = 6
@@ -53,6 +59,24 @@ def inside_polygon(coord, polygon):
     return polygon and polygon.contains(point)
 
 
+def get_boundary_polygon(xys: np.ndarray) -> Polygon:
+    alpha_shape = alphashape(xys, 0.0)  # alpha=0 用于保持原始形状
+    if alpha_shape.geom_type == 'MultiPolygon':
+        # 如果有多个多边形，选择最大的那个
+        alpha_shape = max(alpha_shape, key=lambda a: a.area)
+    boundary_points = np.array(alpha_shape.exterior.coords)[:-1]  # 去掉重复的最后一个点
+    
+    # 使用周期性样条插值创建平滑边界
+    from scipy.interpolate import splprep, splev
+    # 确保首尾相连
+    boundary_points = np.vstack((boundary_points, boundary_points[0]))
+    # 使用样条插值创建平滑边界
+    tck, u = splprep([boundary_points[:, 0], boundary_points[:, 1]], s=0.0, per=True)
+    # 生成更多的边界点以实现平滑效果
+    smooth_u = np.linspace(0, 1, 1000)
+    smooth_boundary = np.array(splev(smooth_u, tck)).T
+    return Polygon(smooth_boundary)
+
 class GreenVisualizer:
     def __init__(self):
         self.data = None
@@ -76,13 +100,15 @@ class GreenVisualizer:
                 coords = feature["geometry"]["coordinates"]
                 self.green_border = Polygon(coords)
 
+
     def plot_raw_data_2(self):
         """Create visualization of the raw data"""
         xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
         zs = np.array([p["z"] for p in self.elevation_points])
         x_min, x_max = min(xys[:, 0]), max(xys[:, 0])
         y_min, y_max = min(xys[:, 1]), max(xys[:, 1])
-        # Adjust the aspect ratio based on the center latitude
+        
+        # 设置图形属性
         center_lat = (y_min + y_max) / 2
         center_lat_rad = np.pi * center_lat / 180
         aspect_ratio = 1 / np.cos(center_lat_rad)
@@ -95,26 +121,21 @@ class GreenVisualizer:
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(y_min, y_max)
         
-        # 找到边界点
-        from scipy.spatial import ConvexHull
-        hull = ConvexHull(xys)
-        boundary_points = xys[hull.vertices]
-        # build polygon
-        from shapely.geometry import Polygon
-        boundary_polygon = Polygon(boundary_points)
-        # 绘制边界线 白色
-        ax.plot(boundary_points[:, 0], boundary_points[:, 1], 'w-', linewidth=1, alpha=0.5)
+        # 获取边界多边形并绘制
+        boundary_polygon = get_boundary_polygon(xys)
+        boundary_coords = np.array(boundary_polygon.exterior.coords)
+        ax.plot(boundary_coords[:, 0], boundary_coords[:, 1], 'w-', linewidth=1.5, alpha=1.0, zorder=10)
         
         plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
         plt.savefig(
             self.output_path,
-            bbox_inches="tight",  # Remove extra white space
-            pad_inches=0,  # Set margin to 0
-            transparent=True,  # Set transparent background
-            dpi=300,  # Keep high resolution
+            bbox_inches="tight",
+            pad_inches=0,
+            transparent=True,
+            dpi=300,
         )
         plt.close()
-        
+
     def plot_raw_data(self):
         """Create visualization of the raw data"""
         xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
