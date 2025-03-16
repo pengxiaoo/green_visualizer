@@ -8,9 +8,11 @@ import numpy as np
 base_grid_num = 120
 base_canvas_size = 10
 smooth_sigma = 2
-elevation_levels = 20
-arrow_padding = 5
-arrow_count = 10
+elevation_levels = 30
+arrow_padding = 3
+arrow_count = 16
+arrow_interval_min = 2
+arrow_interval_max = 6
 colors_gradient_list = [
     "#0000FF",  # blue
     "#00FF00",  # green
@@ -142,7 +144,7 @@ class GreenVisualizer:
         return Polygon(dense_points)
 
     def _generate_masks(self):
-        boundary_polygon = self._smooth_and_densify_edge()
+        boundary_polygon = self.green_border
         # 利用boundary_polygon裁剪xi, yi
         mask = np.zeros_like(self.xi, dtype=bool)
         for i in range(self.xi.shape[0]):
@@ -224,28 +226,35 @@ class GreenVisualizer:
         dx_normalized = dx / magnitude
         dy_normalized = dy / magnitude
         x_arrow_interval = int(self.x_grid_num / arrow_count)
+        x_arrow_interval = max(x_arrow_interval, arrow_interval_min)
+        x_arrow_interval = min(x_arrow_interval, arrow_interval_max)
         y_arrow_interval = int(self.y_grid_num / arrow_count)
-        print(f"x_grid_num: {self.x_grid_num}, y_grid_num: {self.y_grid_num}, "
+        y_arrow_interval = max(y_arrow_interval, arrow_interval_min)
+        y_arrow_interval = min(y_arrow_interval, arrow_interval_max)
+        json_file_index = self.output_path.split("/")[-1].split(".")[0]
+        print(f"json_file_index: {json_file_index} => x_grid_num: {self.x_grid_num}, y_grid_num: {self.y_grid_num}, "
               f"x_arrow_interval: {x_arrow_interval}, y_arrow_interval: {y_arrow_interval}")
         skip = (
-            slice(arrow_padding, -arrow_padding, x_arrow_interval),
             slice(arrow_padding, -arrow_padding, y_arrow_interval),
+            slice(arrow_padding, -arrow_padding, x_arrow_interval),
         )
         mask_skip = mask[skip]
+        arrow_length_scale = self.x_grid_num / 2
+        print(f"arrow length scale: {arrow_length_scale}")
         self.ax.quiver(
             xi_masked[skip][mask_skip],
             yi_masked[skip][mask_skip],
             -dy_normalized[skip][mask_skip],
             -dx_normalized[skip][mask_skip],
-            scale=15,
+            scale=arrow_length_scale,
             scale_units="width",
             units="width",
-            width=0.005,
-            headwidth=8,
-            headlength=5,
-            headaxislength=2,
+            width=0.002,
+            headwidth=6,
+            headlength=6,
+            headaxislength=3,
             minshaft=1,
-            minlength=10,
+            minlength=2,
             color="white",
             alpha=1,
         )
