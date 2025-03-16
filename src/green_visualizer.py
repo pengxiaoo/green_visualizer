@@ -38,6 +38,7 @@ class GreenVisualizer:
         self.y_range = None
         self.x_grid_num = None
         self.y_grid_num = None
+        self.ax = None
 
     def _reset(self):
         self.data = None
@@ -56,13 +57,14 @@ class GreenVisualizer:
         self.y_range = None
         self.x_grid_num = None
         self.y_grid_num = None
+        self.ax = None
 
     @staticmethod
     def _load_json(json_path):
         with open(json_path, "r") as f:
             return json.load(f)
 
-    def _parse_data(self):
+    def _init(self):
         """Parse JSON data, extract elevation points and boundary"""
         for feature in self.data["features"]:
             if feature["id"] == "Elevation":
@@ -89,7 +91,20 @@ class GreenVisualizer:
         self.yi = np.linspace(self.y_min, self.y_max, self.y_grid_num)
         self.xi, self.yi = np.meshgrid(self.xi, self.yi)
 
-    def generate_masks(self):
+        # Set up the figure
+        center_lat = (self.y_min + self.y_max) / 2
+        center_lat_rad = np.pi * center_lat / 180
+        aspect_ratio = 1 / np.cos(center_lat_rad)
+        fig_width = base_canvas_size
+        fig_height = int(base_canvas_size * aspect_ratio)
+        _, self.ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
+        self.ax.set_aspect("equal")
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+        self.ax.set_xlim(self.x_min, self.x_max)
+        self.ax.set_ylim(self.y_min, self.y_max)
+
+    def _generate_masks(self):
         boundary_polygon = self.green_border
         # 利用boundary_polygon裁剪xi, yi
         mask = np.zeros_like(self.xi, dtype=bool)
@@ -131,20 +146,6 @@ class GreenVisualizer:
         return mask, xi_masked, yi_masked, zi_masked
 
     def _plot_edge(self):
-
-        # 设置图形属性
-        center_lat = (self.y_min + self.y_max) / 2
-        center_lat_rad = np.pi * center_lat / 180
-        aspect_ratio = 1 / np.cos(center_lat_rad)
-        fig_width = base_canvas_size
-        fig_height = int(base_canvas_size * aspect_ratio)
-        _, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
-        ax.set_aspect("equal")
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_xlim(self.x_min, self.x_max)
-        ax.set_ylim(self.y_min, self.y_max)
-
         # 绘制点，并根据高程来着色
         plt.scatter(self.xys[:, 0], self.xys[:, 1], marker='+', label='Points', c=self.zs, cmap='viridis')
         # 绘制边界
@@ -164,26 +165,17 @@ class GreenVisualizer:
 
     def _plot(self):
         # 生成掩码和插值结果
-        mask, xi_masked, yi_masked, zi_masked = self.generate_masks()
-
-        # 设置图形属性
-        center_lat = (self.y_min + self.y_max) / 2
-        center_lat_rad = np.pi * center_lat / 180
-        aspect_ratio = 1 / np.cos(center_lat_rad)
-        fig_width = base_canvas_size
-        fig_height = int(base_canvas_size * aspect_ratio)
-        _, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
-        ax.set_aspect("equal")
+        mask, xi_masked, yi_masked, zi_masked = self._generate_masks()
 
         # Paint the color gradient
         levels = np.linspace(self.zs.min(), self.zs.max(), elevation_levels)
         custom_cmap = colors.LinearSegmentedColormap.from_list(
             "custom", colors_gradient_list
         )
-        ax.contourf(xi_masked, yi_masked, zi_masked, levels=levels, cmap=custom_cmap)
+        self.ax.contourf(xi_masked, yi_masked, zi_masked, levels=levels, cmap=custom_cmap)
 
         # Paint contour lines
-        ax.contour(xi_masked, yi_masked, zi_masked, levels=levels, colors="k", alpha=0.3)
+        self.ax.contour(xi_masked, yi_masked, zi_masked, levels=levels, colors="k", alpha=0.3)
 
         # Paint gradient arrows
         dx, dy = np.gradient(zi_masked)
@@ -203,7 +195,7 @@ class GreenVisualizer:
             slice(arrow_padding, -arrow_padding, y_arrow_interval),
         )
         mask_skip = mask[skip]
-        ax.quiver(
+        self.ax.quiver(
             xi_masked[skip][mask_skip],
             yi_masked[skip][mask_skip],
             -dy_normalized[skip][mask_skip],
@@ -220,10 +212,10 @@ class GreenVisualizer:
             color="white",
             alpha=1,
         )
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_xlim(self.x_min, self.x_max)
-        ax.set_ylim(self.y_min, self.y_max)
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
+        self.ax.set_xlim(self.x_min, self.x_max)
+        self.ax.set_ylim(self.y_min, self.y_max)
         plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
         plt.savefig(
             self.output_path,
@@ -236,12 +228,12 @@ class GreenVisualizer:
 
     def process_file(self, json_path, output_path):
         """Process single file"""
-        self._reset()  # 重置所有变量
+        self._reset() 
         self.output_path = output_path
         self.data = self._load_json(json_path)
-        self._parse_data()
-        self._plot_edge()
-        plt.close()  # 确保关闭当前图形
+        self._init()
+        self._plot()
+        plt.close() 
 
 
 if __name__ == "__main__":
@@ -249,7 +241,7 @@ if __name__ == "__main__":
     try:
         for i in range(1, 19):
             json_file = f"testcases/json/{i}.json"
-            png_file = json_file.replace(".json", "_edge.png").replace("/json", "/map")
+            png_file = json_file.replace(".json", ".png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
     finally:
         plt.close("all")
