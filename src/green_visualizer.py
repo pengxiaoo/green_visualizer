@@ -10,12 +10,11 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.spatial import Delaunay, distance
 import numpy as np
 
-
 base_grid_num = 120
 base_canvas_size = 10
 smooth_sigma = 2
-alpha = 0.005     # 非凸程度，越小越凹
-s_spline = 0.0001 # 样条平滑因子，越小越贴合，越大越圆
+alpha = 0.005  # 非凸程度，越小越凹
+s_spline = 0.0001  # 样条平滑因子，越小越贴合，越大越圆
 unify_buffer = 0.0
 num_points = 800
 smooth_buffer = 0
@@ -44,6 +43,7 @@ def get_boundary_polygon(xys: np.ndarray) -> Polygon:
     smooth_boundary = np.array(splev(smooth_u, tck)).T
     return Polygon(smooth_boundary)
 
+
 class GreenVisualizer:
     def __init__(self):
         self.data = None
@@ -67,14 +67,13 @@ class GreenVisualizer:
                 coords = feature["geometry"]["coordinates"]
                 self.green_border = Polygon(coords)
 
-
     def plot_edge(self):
         """Create visualization of the raw data"""
         xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
         zs = np.array([p["z"] for p in self.elevation_points])
         x_min, x_max = min(xys[:, 0]), max(xys[:, 0])
         y_min, y_max = min(xys[:, 1]), max(xys[:, 1])
-        
+
         # 设置图形属性
         center_lat = (y_min + y_max) / 2
         center_lat_rad = np.pi * center_lat / 180
@@ -87,12 +86,14 @@ class GreenVisualizer:
         ax.set_yticks([])
         ax.set_xlim(x_min, x_max)
         ax.set_ylim(y_min, y_max)
-        
+
         # 获取边界多边形并绘制
         boundary_polygon = get_boundary_polygon(xys)
-        boundary_coords = np.array(boundary_polygon.exterior.coords)
-        ax.plot(boundary_coords[:, 0], boundary_coords[:, 1], 'w-', linewidth=1.5, alpha=1.0, zorder=10)
-        
+        plt.scatter(xys[:, 0], xys[:, 1], marker='o', label='Points')
+        if boundary_polygon.geom_type == "Polygon":
+            bx, by = boundary_polygon.exterior.xy
+            plt.plot(bx, by, label='Boundary')
+        plt.gca().set_aspect('equal', adjustable='box')
         plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
         plt.savefig(
             self.output_path,
@@ -100,35 +101,6 @@ class GreenVisualizer:
             pad_inches=0,
             transparent=True,
             dpi=300,
-        )
-        plt.close()
-
-    def plot_raw_data(self):
-        """Create visualization of the raw data"""
-        xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
-        zs = np.array([p["z"] for p in self.elevation_points])
-        x_min, x_max = min(xys[:, 0]), max(xys[:, 0])
-        y_min, y_max = min(xys[:, 1]), max(xys[:, 1])
-        # Adjust the aspect ratio based on the center latitude
-        center_lat = (y_min + y_max) / 2
-        center_lat_rad = np.pi * center_lat / 180
-        aspect_ratio = 1 / np.cos(center_lat_rad)
-        fig_width = base_canvas_size
-        fig_height = int(base_canvas_size * aspect_ratio)
-        _, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
-        ax.set_aspect("equal")
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
-        plt.scatter(xys[:, 0], xys[:, 1], c=zs, cmap="viridis")
-        plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
-        plt.savefig(
-            self.output_path,
-            bbox_inches="tight",  # Remove extra white space
-            pad_inches=0,  # Set margin to 0
-            transparent=True,  # Set transparent background
-            dpi=300,  # Keep high resolution
         )
         plt.close()
 
@@ -186,7 +158,7 @@ class GreenVisualizer:
         y_spacing = y_range / y_grid_num
         dx = dx / x_spacing
         dy = dy / y_spacing
-        magnitude = np.sqrt(dx**2 + dy**2)
+        magnitude = np.sqrt(dx ** 2 + dy ** 2)
         dx_normalized = dx / magnitude
         dy_normalized = dy / magnitude
         skip = (
@@ -239,7 +211,7 @@ class GreenVisualizer:
 if __name__ == "__main__":
     visualizer = GreenVisualizer()
     try:
-        for i in range(1, 19):
+        for i in range(3, 4):
             json_file = f"testcases/json/{i}.json"
             png_file = json_file.replace(".json", "_edge.png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
