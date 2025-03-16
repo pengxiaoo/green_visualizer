@@ -32,16 +32,12 @@ colors_gradient_list = [
 
 def get_boundary_polygon(xys: np.ndarray) -> Polygon:
     # 使用 alpha shape 找到边界点
-    alpha_shape = alphashape(xys, 0.0)  # alpha=0 用于保持原始形状
+    alpha_shape = alphashape(xys, 0)  # alpha=0 用于保持原始形状
     boundary_points = np.array(alpha_shape.exterior.coords)[:-1]  # 去掉重复的最后一个点
     # 确保首尾相连
     boundary_points = np.vstack((boundary_points, boundary_points[0]))
-    # 使用样条插值创建平滑边界
-    tck, u = splprep([boundary_points[:, 0], boundary_points[:, 1]], s=0.0, per=True)
-    # 生成更多的边界点以实现平滑效果
-    smooth_u = np.linspace(0, 1, 1000)
-    smooth_boundary = np.array(splev(smooth_u, tck)).T
-    return Polygon(smooth_boundary)
+    # 直接返回原始边界，不进行平滑处理
+    return Polygon(boundary_points)
 
 
 class GreenVisualizer:
@@ -88,10 +84,9 @@ class GreenVisualizer:
 
         # 获取边界多边形并绘制
         boundary_polygon = get_boundary_polygon(xys)
-        plt.scatter(xys[:, 0], xys[:, 1], marker='o', label='Points')
-        if boundary_polygon.geom_type == "Polygon":
-            bx, by = boundary_polygon.exterior.xy
-            plt.plot(bx, by, label='Boundary', linewidth=1.5, alpha=1.0, zorder=10)
+        plt.scatter(xys[:, 0], xys[:, 1], marker='+', label='Points')
+        bx, by = boundary_polygon.exterior.xy
+        plt.scatter(bx, by, marker='o', label='Boundary', color='red')
         plt.gca().set_aspect('equal', adjustable='box')
         plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
         plt.savefig(
