@@ -33,8 +33,6 @@ colors_gradient_list = [
 
 
 def get_boundary_polygon(xys: np.ndarray, alpha=0) -> Polygon:
-    if alpha is None:
-        alpha = optimizealpha(xys)
     shape = alphashape(xys, alpha)
     if shape.geom_type == 'MultiPolygon':
         shape = max(shape, key=lambda s: s.area)
