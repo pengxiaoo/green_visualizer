@@ -104,8 +104,45 @@ class GreenVisualizer:
         self.ax.set_xlim(self.x_min, self.x_max)
         self.ax.set_ylim(self.y_min, self.y_max)
 
-    def _generate_masks(self):
+    def _smooth_and_densify_edge(self) -> Polygon:
+        """
+        对边界进行加密处理
+        基于平均距离进行线性插值加密
+        Returns:
+            Polygon: 加密后的边界多边形
+        """
         boundary_polygon = self.green_border
+        bx, by = boundary_polygon.exterior.xy
+        boundary_points = np.column_stack([bx, by])
+
+        # 计算相邻点之间的距离
+        distances = np.sqrt(np.sum(np.diff(boundary_points, axis=0) ** 2, axis=1))
+        d_avg = np.mean(distances)
+
+        # 基于平均距离进行插值
+        dense_points = []
+        for i in range(len(boundary_points)):
+            p1 = boundary_points[i]
+            p2 = boundary_points[(i + 1) % len(boundary_points)]  # 循环到第一个点
+
+            dense_points.append(p1)
+            d = np.sqrt(np.sum((p2 - p1) ** 2))
+
+            if d > d_avg:
+                # 计算需要插入的点数
+                n_points = int(d / d_avg) * 2
+                # 生成插值点
+                for j in range(1, n_points):
+                    t = j / n_points
+                    interpolated_point = p1 + t * (p2 - p1)
+                    dense_points.append(interpolated_point)
+
+        dense_points = np.array(dense_points)
+        print(f"加密点数: {len(boundary_points)} -> {len(dense_points)}")
+        return Polygon(dense_points)
+
+    def _generate_masks(self):
+        boundary_polygon = self._smooth_and_densify_edge()
         # 利用boundary_polygon裁剪xi, yi
         mask = np.zeros_like(self.xi, dtype=bool)
         for i in range(self.xi.shape[0]):
@@ -149,7 +186,7 @@ class GreenVisualizer:
         # 绘制点，并根据高程来着色
         plt.scatter(self.xys[:, 0], self.xys[:, 1], marker='+', label='Points', c=self.zs, cmap='viridis')
         # 绘制边界
-        smooth_polygon = self.green_border
+        smooth_polygon = self._smooth_and_densify_edge()
         bx, by = smooth_polygon.exterior.xy
         plt.scatter(bx, by, marker='o', label='Boundary', color='red')
         plt.gca().set_aspect('equal', adjustable='box')
@@ -228,12 +265,12 @@ class GreenVisualizer:
 
     def process_file(self, json_path, output_path):
         """Process single file"""
-        self._reset() 
+        self._reset()
         self.output_path = output_path
         self.data = self._load_json(json_path)
         self._init()
         self._plot()
-        plt.close() 
+        plt.close()
 
 
 if __name__ == "__main__":
