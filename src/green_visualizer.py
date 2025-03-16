@@ -117,22 +117,29 @@ class GreenVisualizer:
 
         # 在边界附近增加插值点
         boundary_points = np.array(boundary_polygon.exterior.coords)
-        # 获取边界上的高程值，使用nearest而不是linear，避免出现nan值
+        # 获取边界上的高程值，使用nearest
         boundary_z = griddata(xys, zs, boundary_points, method='nearest')
         
         # 将边界点及其高程值添加到插值数据中
         xys_enhanced = np.vstack([xys, boundary_points])
         zs_enhanced = np.hstack([zs, boundary_z])
         
-        # 先用cubic方法插值
-        zi = griddata(xys_enhanced, zs_enhanced, (xi, yi), method="cubic")
+        # 首先使用linear方法进行插值，确保所有点都有值
+        zi_linear = griddata(xys_enhanced, zs_enhanced, (xi, yi), method="linear")
         
-        # 找出nan值的位置，用nearest方法填充
-        nan_mask = np.isnan(zi)
-        if np.any(nan_mask):
-            zi_nearest = griddata(xys_enhanced, zs_enhanced, (xi, yi), method="nearest")
-            zi[nan_mask] = zi_nearest[nan_mask]
-            
+        # 然后使用cubic方法进行平滑
+        valid_mask = ~np.isnan(zi_linear)
+        if np.any(~valid_mask):
+            print(f"发现 {np.sum(~valid_mask)} 个无效点，使用linear插值")
+            zi = zi_linear
+        else:
+            # 只在有效区域内使用cubic插值
+            zi = griddata(xys_enhanced, zs_enhanced, (xi, yi), method="cubic")
+            # 如果cubic插值产生了nan值，回退到linear结果
+            nan_mask = np.isnan(zi)
+            if np.any(nan_mask):
+                zi[nan_mask] = zi_linear[nan_mask]
+        
         zi_masked = np.ma.masked_array(zi, ~mask)
 
         # Paint the color gradient
@@ -201,7 +208,7 @@ class GreenVisualizer:
         self.green_border = None
         self.output_path = output_path
         self.parse_data()
-        self.plot_edge()
+        self.plot()
 
 
 if __name__ == "__main__":
@@ -209,7 +216,7 @@ if __name__ == "__main__":
     try:
         for i in range(1, 19):
             json_file = f"testcases/json/{i}.json"
-            png_file = json_file.replace(".json", "_edge.png").replace("/json", "/map")
+            png_file = json_file.replace(".json", ".png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
     finally:
         plt.close("all")
