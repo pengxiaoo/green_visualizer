@@ -10,7 +10,7 @@ base_canvas_size = 10
 smooth_sigma = 2
 elevation_levels = 40
 arrow_padding = 5
-arrow_interval = 6
+arrow_count = 10
 colors_gradient_list = [
     "#0000FF",  # blue
     "#00FF00",  # green
@@ -142,14 +142,16 @@ class GreenVisualizer:
 
         # 使用平滑后的边界
         boundary_polygon = self.smooth_and_densify_edge()
-        
-        # Create mask
+        # 利用boundary_polygon裁剪xi, yi
         mask = np.zeros_like(xi, dtype=bool)
         for i in range(xi.shape[0]):
             for j in range(xi.shape[1]):
                 point = Point(xi[i, j], yi[i, j])
-                mask[i, j] = boundary_polygon.contains(point) if boundary_polygon else True
-        # Interpolation and mask application
+                mask[i, j] = boundary_polygon.contains(point)
+        
+        # 应用掩码但保持网格结构
+        xi_masked = np.ma.masked_array(xi, ~mask)
+        yi_masked = np.ma.masked_array(yi, ~mask)
         zi = griddata(xys, zs, (xi, yi), method="cubic")
         zi_masked = np.ma.masked_array(zi, ~mask)
 
@@ -158,10 +160,10 @@ class GreenVisualizer:
         custom_cmap = colors.LinearSegmentedColormap.from_list(
             "custom", colors_gradient_list
         )
-        ax.contourf(xi, yi, zi_masked, levels=levels, cmap=custom_cmap)
+        ax.contourf(xi_masked, yi_masked, zi_masked, levels=levels, cmap=custom_cmap)
 
         # Paint contour lines
-        ax.contour(xi, yi, zi_masked, levels=levels, colors="k", alpha=0.3)
+        ax.contour(xi_masked, yi_masked, zi_masked, levels=levels, colors="k", alpha=0.3)
 
         # Paint gradient arrows
         dx, dy = np.gradient(zi_masked)
@@ -172,24 +174,26 @@ class GreenVisualizer:
         magnitude = np.sqrt(dx ** 2 + dy ** 2)
         dx_normalized = dx / magnitude
         dy_normalized = dy / magnitude
+        x_arrow_interval = int(x_grid_num / arrow_count)
+        y_arrow_interval = int(y_grid_num / arrow_count)
+        print(f"x_grid_num: {x_grid_num}, y_grid_num: {y_grid_num}, x_arrow_interval: {x_arrow_interval}, y_arrow_interval: {y_arrow_interval}")
         skip = (
-            slice(arrow_padding, -arrow_padding, arrow_interval),
-            slice(arrow_padding, -arrow_padding, arrow_interval),
+            slice(arrow_padding, -arrow_padding, x_arrow_interval),
+            slice(arrow_padding, -arrow_padding, y_arrow_interval),
         )
         mask_skip = mask[skip]
-        # ax.quiver: https://matplotlib.org/stable/api/_as_gen/matplotlib.axes.Axes.quiver.html
         ax.quiver(
-            xi[skip][mask_skip],  # x coordinate of start point
-            yi[skip][mask_skip],  # y coordinate of start point
-            -dy_normalized[skip][mask_skip],  # -dy/dx points to lower point
+            xi_masked[skip][mask_skip],
+            yi_masked[skip][mask_skip],
+            -dy_normalized[skip][mask_skip],
             -dx_normalized[skip][mask_skip],
-            scale=15,  # global scale factor
+            scale=15, 
             scale_units="width",
             units="width",
-            width=0.005,  # base unit
-            headwidth=8,  # arrow head width
-            headlength=5,  # arrow head length
-            headaxislength=2,  # arrow head bottom length
+            width=0.005,
+            headwidth=8,
+            headlength=5,
+            headaxislength=2,
             minshaft=1,
             minlength=10,
             color="white",
@@ -216,7 +220,7 @@ class GreenVisualizer:
         self.green_border = None
         self.output_path = output_path
         self.parse_data()
-        self.plot_edge()
+        self.plot()
 
 
 if __name__ == "__main__":
@@ -224,7 +228,7 @@ if __name__ == "__main__":
     try:
         for i in range(1, 19):
             json_file = f"testcases/json/{i}.json"
-            png_file = json_file.replace(".json", "_edge.png").replace("/json", "/map")
+            png_file = json_file.replace(".json", ".png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
     finally:
         plt.close("all")
