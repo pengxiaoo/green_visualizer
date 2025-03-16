@@ -2,7 +2,7 @@ import json
 import math
 from shapely.geometry import Point, Polygon, MultiPoint, LineString
 from shapely.ops import unary_union, polygonize
-from alphashape import alphashape
+from alphashape import alphashape, optimizealpha
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from scipy.interpolate import griddata, splprep, splev
@@ -30,14 +30,14 @@ colors_gradient_list = [
 ]
 
 
-def get_boundary_polygon(xys: np.ndarray) -> Polygon:
-    # 使用 alpha shape 找到边界点
-    alpha_shape = alphashape(xys, 0)  # alpha=0 用于保持原始形状
-    boundary_points = np.array(alpha_shape.exterior.coords)[:-1]  # 去掉重复的最后一个点
-    # 确保首尾相连
-    boundary_points = np.vstack((boundary_points, boundary_points[0]))
-    # 直接返回原始边界，不进行平滑处理
-    return Polygon(boundary_points)
+def get_boundary_polygon(xys: np.ndarray, alpha=0) -> Polygon:
+    if alpha is None:
+        alpha = optimizealpha(xys)
+    shape = alphashape(xys, alpha)
+    if shape.geom_type == 'MultiPolygon':
+        shape = max(shape, key=lambda s: s.area)
+    boundary_coords = np.array(shape.exterior.coords)
+    return Polygon(boundary_coords)
 
 
 class GreenVisualizer:
