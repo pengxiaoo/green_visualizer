@@ -43,6 +43,42 @@ class GreenVisualizer:
                 coords = feature["geometry"]["coordinates"]
                 self.green_border = Polygon(coords)
 
+    def plot_edge(self):
+        xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
+        zs = np.array([p["z"] for p in self.elevation_points])
+        x_min, x_max = min(xys[:, 0]), max(xys[:, 0])
+        y_min, y_max = min(xys[:, 1]), max(xys[:, 1])
+
+        # 设置图形属性
+        center_lat = (y_min + y_max) / 2
+        center_lat_rad = np.pi * center_lat / 180
+        aspect_ratio = 1 / np.cos(center_lat_rad)
+        fig_width = base_canvas_size
+        fig_height = int(base_canvas_size * aspect_ratio)
+        _, ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
+        ax.set_aspect("equal")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+
+        # 绘制点，并根据高程来着色
+        plt.scatter(xys[:, 0], xys[:, 1], marker='+', label='Points', c=zs, cmap='viridis')
+        # 绘制边界
+        smooth_polygon = self.green_border
+        bx, by = smooth_polygon.exterior.xy
+        plt.scatter(bx, by, marker='o', label='Boundary', color='red')
+        plt.gca().set_aspect('equal', adjustable='box')
+        plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+        plt.savefig(
+            self.output_path,
+            bbox_inches="tight",
+            pad_inches=0,
+            transparent=True,
+            dpi=300,
+        )
+        plt.close()
+        
     def plot(self):
         # Convert point data to numpy arrays
         xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
@@ -78,7 +114,25 @@ class GreenVisualizer:
         # 应用掩码但保持网格结构
         xi_masked = np.ma.masked_array(xi, ~mask)
         yi_masked = np.ma.masked_array(yi, ~mask)
-        zi = griddata(xys, zs, (xi, yi), method="cubic")
+
+        # 在边界附近增加插值点
+        boundary_points = np.array(boundary_polygon.exterior.coords)
+        # 获取边界上的高程值，使用nearest而不是linear，避免出现nan值
+        boundary_z = griddata(xys, zs, boundary_points, method='nearest')
+        
+        # 将边界点及其高程值添加到插值数据中
+        xys_enhanced = np.vstack([xys, boundary_points])
+        zs_enhanced = np.hstack([zs, boundary_z])
+        
+        # 先用cubic方法插值
+        zi = griddata(xys_enhanced, zs_enhanced, (xi, yi), method="cubic")
+        
+        # 找出nan值的位置，用nearest方法填充
+        nan_mask = np.isnan(zi)
+        if np.any(nan_mask):
+            zi_nearest = griddata(xys_enhanced, zs_enhanced, (xi, yi), method="nearest")
+            zi[nan_mask] = zi_nearest[nan_mask]
+            
         zi_masked = np.ma.masked_array(zi, ~mask)
 
         # Paint the color gradient
@@ -147,7 +201,7 @@ class GreenVisualizer:
         self.green_border = None
         self.output_path = output_path
         self.parse_data()
-        self.plot()
+        self.plot_edge()
 
 
 if __name__ == "__main__":
@@ -155,7 +209,7 @@ if __name__ == "__main__":
     try:
         for i in range(1, 19):
             json_file = f"testcases/json/{i}.json"
-            png_file = json_file.replace(".json", ".png").replace("/json", "/map")
+            png_file = json_file.replace(".json", "_edge.png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
     finally:
         plt.close("all")
