@@ -31,43 +31,10 @@ colors_gradient_list = [
 ]
 
 
-def smooth_coordinates(coords):
-    longitudes, latitudes = zip(*coords)
-    smooth_longs = gaussian_filter1d(longitudes, smooth_sigma)
-    smooth_lats = gaussian_filter1d(latitudes, smooth_sigma)
-    return list(zip(smooth_longs, smooth_lats))
-
-
-def get_smooth_polygon(coords):
-    count = len(coords)
-    if count < 3:
-        print(f"not enough points to create polygon: {count} points")
-        return None
-    # ensure the polygon is closed
-    if coords[0] != coords[-1]:
-        coords.append(coords[0])
-    smoothed_coords = smooth_coordinates(coords)
-    try:
-        return Polygon(smoothed_coords)
-    except ValueError as e:
-        print(f"failed to create polygon: {e}")
-        return None
-
-
-def inside_polygon(coord, polygon):
-    point = Point(coord)
-    return polygon and polygon.contains(point)
-
-
 def get_boundary_polygon(xys: np.ndarray) -> Polygon:
+    # 使用 alpha shape 找到边界点
     alpha_shape = alphashape(xys, 0.0)  # alpha=0 用于保持原始形状
-    if alpha_shape.geom_type == 'MultiPolygon':
-        # 如果有多个多边形，选择最大的那个
-        alpha_shape = max(alpha_shape, key=lambda a: a.area)
     boundary_points = np.array(alpha_shape.exterior.coords)[:-1]  # 去掉重复的最后一个点
-    
-    # 使用周期性样条插值创建平滑边界
-    from scipy.interpolate import splprep, splev
     # 确保首尾相连
     boundary_points = np.vstack((boundary_points, boundary_points[0]))
     # 使用样条插值创建平滑边界
@@ -101,7 +68,7 @@ class GreenVisualizer:
                 self.green_border = Polygon(coords)
 
 
-    def plot_raw_data_2(self):
+    def plot_edge(self):
         """Create visualization of the raw data"""
         xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
         zs = np.array([p["z"] for p in self.elevation_points])
@@ -192,20 +159,13 @@ class GreenVisualizer:
         ax.set_aspect("equal")
 
         # todo: Improve the edge smoothing
-        points = [(x, y) for x, y in xys]
-        alpha_shape = alphashape(points, alpha)
-        # If alpha shape is MultiPolygon, take the largest one
-        if alpha_shape.geom_type == "MultiPolygon":
-            alpha_shape = max(alpha_shape, key=lambda x: x.area)
-        boundary_coords = list(alpha_shape.exterior.coords)
-        smoothed_edge_points = smooth_coordinates(boundary_coords)
-        smooth_border = get_smooth_polygon(smoothed_edge_points)
+        boundary_polygon = get_boundary_polygon(xys)
         # Create mask
         mask = np.zeros_like(xi, dtype=bool)
         for i in range(xi.shape[0]):
             for j in range(xi.shape[1]):
                 point = Point(xi[i, j], yi[i, j])
-                mask[i, j] = smooth_border.contains(point) if smooth_border else True
+                mask[i, j] = boundary_polygon.contains(point) if boundary_polygon else True
         # Interpolation and mask application
         zi = griddata(xys, zs, (xi, yi), method="cubic")
         zi_masked = np.ma.masked_array(zi, ~mask)
@@ -273,7 +233,7 @@ class GreenVisualizer:
         self.green_border = None
         self.output_path = output_path
         self.parse_data()
-        self.plot_raw_data_2()
+        self.plot_edge()
 
 
 if __name__ == "__main__":
