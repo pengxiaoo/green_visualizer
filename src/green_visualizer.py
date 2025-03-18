@@ -87,8 +87,12 @@ class GreenVisualizer:
         # Create 2d grid points with consistent spacing
         self.x_range = self.x_max - self.x_min
         self.y_range = self.y_max - self.y_min
-        self.x_grid_num = int(base_grid_num * (self.x_range / max(self.x_range, self.y_range)))
-        self.y_grid_num = int(base_grid_num * (self.y_range / max(self.x_range, self.y_range)))
+        self.x_grid_num = int(
+            base_grid_num * (self.x_range / max(self.x_range, self.y_range))
+        )
+        self.y_grid_num = int(
+            base_grid_num * (self.y_range / max(self.x_range, self.y_range))
+        )
         self.xi = np.linspace(self.x_min, self.x_max, self.x_grid_num)
         self.yi = np.linspace(self.y_min, self.y_max, self.y_grid_num)
         self.xi, self.yi = np.meshgrid(self.xi, self.yi)
@@ -100,6 +104,10 @@ class GreenVisualizer:
         fig_width = base_canvas_size
         fig_height = int(base_canvas_size * aspect_ratio)
         _, self.ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
+        self.ax.spines["top"].set_visible(False)
+        self.ax.spines["right"].set_visible(False)
+        self.ax.spines["bottom"].set_visible(False)
+        self.ax.spines["left"].set_visible(False)
         self.ax.set_aspect("equal")
         self.ax.set_xticks([])
         self.ax.set_yticks([])
@@ -159,14 +167,16 @@ class GreenVisualizer:
         # 在边界附近增加插值点
         boundary_points = np.array(boundary_polygon.exterior.coords)
         # 获取边界上的高程值，使用nearest
-        boundary_z = griddata(self.xys, self.zs, boundary_points, method='nearest')
+        boundary_z = griddata(self.xys, self.zs, boundary_points, method="nearest")
 
         # 将边界点及其高程值添加到插值数据中
         xys_enhanced = np.vstack([self.xys, boundary_points])
         zs_enhanced = np.hstack([self.zs, boundary_z])
 
         # 首先使用linear方法进行插值，确保所有点都有值
-        zi_linear = griddata(xys_enhanced, zs_enhanced, (self.xi, self.yi), method="linear")
+        zi_linear = griddata(
+            xys_enhanced, zs_enhanced, (self.xi, self.yi), method="linear"
+        )
 
         # 然后使用cubic方法进行平滑
         valid_mask = ~np.isnan(zi_linear)
@@ -186,12 +196,19 @@ class GreenVisualizer:
 
     def _plot_edge(self):
         # 绘制点，并根据高程来着色
-        plt.scatter(self.xys[:, 0], self.xys[:, 1], marker='+', label='Points', c=self.zs, cmap='viridis')
+        plt.scatter(
+            self.xys[:, 0],
+            self.xys[:, 1],
+            marker="+",
+            label="Points",
+            c=self.zs,
+            cmap="viridis",
+        )
         # 绘制边界
         smooth_polygon = self._smooth_and_densify_edge()
         bx, by = smooth_polygon.exterior.xy
-        plt.scatter(bx, by, marker='o', label='Boundary', color='red')
-        plt.gca().set_aspect('equal', adjustable='box')
+        plt.scatter(bx, by, marker="o", label="Boundary", color="red")
+        plt.gca().set_aspect("equal", adjustable="box")
         plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
         plt.savefig(
             self.output_path,
@@ -211,10 +228,14 @@ class GreenVisualizer:
         custom_cmap = colors.LinearSegmentedColormap.from_list(
             "custom", colors_gradient_list
         )
-        self.ax.contourf(xi_masked, yi_masked, zi_masked, levels=levels, cmap=custom_cmap)
+        self.ax.contourf(
+            xi_masked, yi_masked, zi_masked, levels=levels, cmap=custom_cmap
+        )
 
         # Paint contour lines
-        self.ax.contour(xi_masked, yi_masked, zi_masked, levels=levels, colors="k", alpha=0.3)
+        self.ax.contour(
+            xi_masked, yi_masked, zi_masked, levels=levels, colors="k", alpha=0.3
+        )
 
         # Paint gradient arrows
         dx, dy = np.gradient(zi_masked)
@@ -222,7 +243,7 @@ class GreenVisualizer:
         y_spacing = self.y_range / self.y_grid_num
         dx = dx / x_spacing
         dy = dy / y_spacing
-        magnitude = np.sqrt(dx ** 2 + dy ** 2)
+        magnitude = np.sqrt(dx**2 + dy**2)
         dx_normalized = dx / magnitude
         dy_normalized = dy / magnitude
         x_arrow_interval = int(self.x_grid_num / arrow_count)
@@ -232,8 +253,10 @@ class GreenVisualizer:
         y_arrow_interval = max(y_arrow_interval, arrow_interval_min)
         y_arrow_interval = min(y_arrow_interval, arrow_interval_max)
         json_file_index = self.output_path.split("/")[-1].split(".")[0]
-        print(f"json_file_index: {json_file_index} => x_grid_num: {self.x_grid_num}, y_grid_num: {self.y_grid_num}, "
-              f"x_arrow_interval: {x_arrow_interval}, y_arrow_interval: {y_arrow_interval}")
+        print(
+            f"json_file_index: {json_file_index} => x_grid_num: {self.x_grid_num}, y_grid_num: {self.y_grid_num}, "
+            f"x_arrow_interval: {x_arrow_interval}, y_arrow_interval: {y_arrow_interval}"
+        )
         skip = (
             slice(arrow_padding, -arrow_padding, y_arrow_interval),
             slice(arrow_padding, -arrow_padding, x_arrow_interval),
