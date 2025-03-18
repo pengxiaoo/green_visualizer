@@ -8,11 +8,12 @@ import numpy as np
 base_grid_num = 120
 base_canvas_size = 10
 smooth_sigma = 2
-elevation_levels = 30
-arrow_padding = 3
-arrow_count = 16
-arrow_interval_min = 2
-arrow_interval_max = 6
+elevation_levels = 20
+arrow_padding = 5
+arrow_count = 8
+arrow_interval_min = 4
+arrow_interval_max = 10
+arrow_length_scale_base = 50
 colors_gradient_list = [
     "#0000FF",  # blue
     "#00FF00",  # green
@@ -262,8 +263,9 @@ class GreenVisualizer:
             slice(arrow_padding, -arrow_padding, x_arrow_interval),
         )
         mask_skip = mask[skip]
-        arrow_length_scale = self.x_grid_num / 2
-        print(f"arrow length scale: {arrow_length_scale}")
+        diagonal_grid_num = np.sqrt((self.x_grid_num)**2 + (self.y_grid_num)**2)
+        arrow_length_scale = arrow_length_scale_base * self.x_grid_num / diagonal_grid_num
+        print(f"diagonal_grid_num: {diagonal_grid_num}, arrow length scale: {arrow_length_scale}")
         self.ax.quiver(
             xi_masked[skip][mask_skip],
             yi_masked[skip][mask_skip],
