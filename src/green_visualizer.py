@@ -212,7 +212,7 @@ class GreenVisualizer:
         plt.gca().set_aspect("equal", adjustable="box")
         plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
         plt.savefig(
-            self.output_path,
+            f"{self.output_path.replace('.png', '_edge.png')}",
             bbox_inches="tight",
             pad_inches=0,
             transparent=True,
@@ -244,7 +244,7 @@ class GreenVisualizer:
         y_spacing = self.y_range / self.y_grid_num
         dx = dx / x_spacing
         dy = dy / y_spacing
-        magnitude = np.sqrt(dx**2 + dy**2)
+        magnitude = np.sqrt(dx ** 2 + dy ** 2)
         dx_normalized = dx / magnitude
         dy_normalized = dy / magnitude
         x_arrow_interval = int(self.x_grid_num / arrow_count)
@@ -304,12 +304,14 @@ class GreenVisualizer:
         self.data = self._load_json(json_path)
         self._init()
         self._plot()
+        self._plot_edge()
         plt.close()
 
 
 if __name__ == "__main__":
     visualizer = GreenVisualizer()
     try:
+        # run all the 18 testcases
         for i in range(1, 19):
             json_file = f"testcases/json/{i}.json"
             png_file = json_file.replace(".json", ".png").replace("/json", "/map")
