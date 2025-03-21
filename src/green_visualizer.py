@@ -5,9 +5,11 @@ import matplotlib.colors as colors
 from scipy.interpolate import griddata
 import numpy as np
 
+dpi = 200
+max_pixels = 2000
+target_meters_per_pixel = 0.02
+lat_to_meter_ratio = 111000
 base_grid_num = 120
-base_canvas_size = 10
-smooth_sigma = 2
 elevation_levels = 20
 arrow_padding = 5
 arrow_count = 8
@@ -101,9 +103,17 @@ class GreenVisualizer:
         # Set up the figure
         center_lat = (self.y_min + self.y_max) / 2
         center_lat_rad = np.pi * center_lat / 180
-        aspect_ratio = 1 / np.cos(center_lat_rad)
-        fig_width = base_canvas_size
-        fig_height = int(base_canvas_size * aspect_ratio)
+        width_meters = self.x_range * lat_to_meter_ratio * np.cos(center_lat_rad)
+        height_meters = self.y_range * lat_to_meter_ratio
+
+        # 计算需要的像素数
+        pixels_width = int(width_meters / target_meters_per_pixel)
+        pixels_height = int(height_meters / target_meters_per_pixel)
+
+        # 计算所需的figure尺寸和dpi
+        fig_width = pixels_width / dpi
+        fig_height = pixels_height / dpi
+
         _, self.ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
         self.ax.spines["top"].set_visible(False)
         self.ax.spines["right"].set_visible(False)
@@ -244,7 +254,7 @@ class GreenVisualizer:
         y_spacing = self.y_range / self.y_grid_num
         dx = dx / x_spacing
         dy = dy / y_spacing
-        magnitude = np.sqrt(dx ** 2 + dy ** 2)
+        magnitude = np.sqrt(dx**2 + dy**2)
         dx_normalized = dx / magnitude
         dy_normalized = dy / magnitude
         x_arrow_interval = int(self.x_grid_num / arrow_count)
@@ -263,9 +273,13 @@ class GreenVisualizer:
             slice(arrow_padding, -arrow_padding, x_arrow_interval),
         )
         mask_skip = mask[skip]
-        diagonal_grid_num = np.sqrt(self.x_grid_num ** 2 + self.y_grid_num ** 2)
-        arrow_length_scale = arrow_length_scale_base * self.x_grid_num / diagonal_grid_num
-        print(f"diagonal_grid_num: {diagonal_grid_num}, arrow length scale: {arrow_length_scale}")
+        diagonal_grid_num = np.sqrt(self.x_grid_num**2 + self.y_grid_num**2)
+        arrow_length_scale = (
+            arrow_length_scale_base * self.x_grid_num / diagonal_grid_num
+        )
+        print(
+            f"diagonal_grid_num: {diagonal_grid_num}, arrow length scale: {arrow_length_scale}"
+        )
         self.ax.quiver(
             xi_masked[skip][mask_skip],
             yi_masked[skip][mask_skip],
@@ -283,11 +297,6 @@ class GreenVisualizer:
             color="white",
             alpha=1,
         )
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
-        self.ax.set_xlim(self.x_min, self.x_max)
-        self.ax.set_ylim(self.y_min, self.y_max)
-        plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
         plt.savefig(
             self.output_path,
             bbox_inches="tight",  # Remove extra white space
