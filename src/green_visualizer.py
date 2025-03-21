@@ -263,7 +263,7 @@ class GreenVisualizer:
             slice(arrow_padding, -arrow_padding, x_arrow_interval),
         )
         mask_skip = mask[skip]
-        diagonal_grid_num = np.sqrt((self.x_grid_num)**2 + (self.y_grid_num)**2)
+        diagonal_grid_num = np.sqrt(self.x_grid_num ** 2 + self.y_grid_num ** 2)
         arrow_length_scale = arrow_length_scale_base * self.x_grid_num / diagonal_grid_num
         print(f"diagonal_grid_num: {diagonal_grid_num}, arrow length scale: {arrow_length_scale}")
         self.ax.quiver(
