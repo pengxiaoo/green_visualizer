@@ -10,19 +10,30 @@ max_pixels = 2000
 target_meters_per_pixel = 0.02
 lat_to_meter_ratio = 111000
 base_grid_num = 120
-elevation_levels = 20
-arrow_padding = 5
+arrow_padding = 1
 arrow_count = 8
 arrow_interval_min = 4
 arrow_interval_max = 10
-arrow_length_scale_base = 50
+arrow_length_scale_base = 20
 colors_gradient_list = [
-    "#0000FF",  # blue
-    "#00FF00",  # green
-    "#FFFF00",  # yellow
-    "#FFA500",  # orange
-    "#FF0000",  # red
+    "#1640C5",  # blue
+    "#126ED4",  # light blue
+    "#1C9AD9",  # medium blue
+    "#0BBBCA",  # dark blue
+    "#1AD7C6",  # sky blue
+    "#3ADE8A",  # cyan
+    "#4FE670",  # light aqua
+    "#9AE639",  # medium sea green
+    "#E1CF24",  # lime green
+    "#E5A129",  # chartreuse
+    "#E8862A",  # yellow
+    "#E36626",  # light yellow
+    "#F2451D",  # orange
+    "#EF4123",  # dark orange
+    "#EB3B2A",  # red orange
+    "#CA253C",  # red
 ]
+elevation_levels = len(colors_gradient_list)
 
 
 class GreenVisualizer:
@@ -245,7 +256,7 @@ class GreenVisualizer:
 
         # Paint contour lines
         self.ax.contour(
-            xi_masked, yi_masked, zi_masked, levels=levels, colors="k", alpha=0.3
+            xi_masked, yi_masked, zi_masked, levels=levels, colors="k", alpha=0.1
         )
 
         # Paint gradient arrows
@@ -288,12 +299,12 @@ class GreenVisualizer:
             scale=arrow_length_scale,
             scale_units="width",
             units="width",
-            width=0.002,
+            width=0.005,
             headwidth=6,
             headlength=6,
-            headaxislength=3,
+            headaxislength=4,
             minshaft=1,
-            minlength=2,
+            minlength=3,
             color="white",
             alpha=1,
         )
@@ -302,7 +313,7 @@ class GreenVisualizer:
             bbox_inches="tight",  # Remove extra white space
             pad_inches=0,  # Set margin to 0
             transparent=True,  # Set transparent background
-            dpi=300,  # Keep high resolution
+            dpi=dpi,  # Keep high resolution
         )
         plt.close()
 
