@@ -10,6 +10,7 @@ max_pixels = 2000
 target_meters_per_pixel = 0.02
 lat_to_meter_ratio = 111000
 base_grid_num = 120
+## todo: the following arrow settings are not good enough
 arrow_padding = 1
 arrow_count = 8
 arrow_interval_min = 4
@@ -245,6 +246,7 @@ class GreenVisualizer:
         # 生成掩码和插值结果
         mask, xi_masked, yi_masked, zi_masked = self._generate_masks()
 
+        # todo: the edge is not smooth enough
         # Paint the color gradient
         levels = np.linspace(self.zs.min(), self.zs.max(), elevation_levels)
         custom_cmap = colors.LinearSegmentedColormap.from_list(
