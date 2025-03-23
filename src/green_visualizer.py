@@ -6,7 +6,6 @@ from scipy.interpolate import griddata
 import numpy as np
 
 dpi = 200
-max_pixels = 2000
 target_meters_per_pixel = 0.02
 lat_to_meter_ratio = 111000
 base_grid_num = 120
