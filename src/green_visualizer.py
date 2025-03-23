@@ -9,7 +9,8 @@ dpi = 200
 target_meters_per_pixel = 0.02
 lat_to_meter_ratio = 111000
 base_grid_num = 120
-## todo: the following arrow settings are not good enough
+arrow_spacing_in_meters = 10 # todo: adjust arrow_spacing_in_meters and use it to control the arrow density
+# the following 5 parameters can be adjusted or even removed if there is better way
 arrow_padding = 1
 arrow_count = 8
 arrow_interval_min = 4
@@ -38,23 +39,7 @@ elevation_levels = len(colors_gradient_list)
 
 class GreenVisualizer:
     def __init__(self):
-        self.data = None
-        self.elevation_points = []
-        self.green_border = None
-        self.output_path = None
-        self.xys = None
-        self.zs = None
-        self.xi = None
-        self.yi = None
-        self.x_min = None
-        self.x_max = None
-        self.y_min = None
-        self.y_max = None
-        self.x_range = None
-        self.y_range = None
-        self.x_grid_num = None
-        self.y_grid_num = None
-        self.ax = None
+        self._reset()
 
     def _reset(self):
         self.data = None
