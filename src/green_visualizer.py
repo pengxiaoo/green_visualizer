@@ -365,6 +365,7 @@ class GreenVisualizer:
 
     def process_file(self, json_path, output_path):
         """Process single file"""
+        self._reset()
         self.output_path = output_path
         self.data = self._load_json(json_path)
         self._init()
@@ -374,10 +375,10 @@ class GreenVisualizer:
 
 
 if __name__ == "__main__":
+    visualizer = GreenVisualizer()
     try:
         # run all the 18 testcases
         for i in range(1, 19):
-            visualizer = GreenVisualizer()
             json_file = f"testcases/json/{i}.json"
             png_file = json_file.replace(".json", ".png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
