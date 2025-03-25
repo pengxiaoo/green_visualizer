@@ -4,18 +4,15 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from scipy.interpolate import griddata
 import numpy as np
-
-dpi = 200
+dpi = 300
 target_meters_per_pixel = 0.02
 lat_to_meter_ratio = 111000
-base_grid_num = 120
-arrow_spacing_in_meters = 10 # todo: adjust arrow_spacing_in_meters and use it to control the arrow density
-# the following 5 parameters can be adjusted or even removed if there is better way
-arrow_padding = 1
-arrow_count = 8
-arrow_interval_min = 4
-arrow_interval_max = 10
-arrow_length_scale_base = 20
+base_grid_num = 400
+# Added default arrow density parameter
+arrow_spacing_in_meters = 2
+# Increase density by sampling more points (higher the more sample points)
+green_edge_sampling_factor = 3
+
 colors_gradient_list = [
     "#1640C5",  # blue
     "#126ED4",  # light blue
@@ -58,6 +55,8 @@ class GreenVisualizer:
         self.y_range = None
         self.x_grid_num = None
         self.y_grid_num = None
+        self.width_meters = None
+        self.height_meters = None
         self.ax = None
 
     @staticmethod
@@ -66,7 +65,6 @@ class GreenVisualizer:
             return json.load(f)
 
     def _init(self):
-        """Parse JSON data, extract elevation points and boundary"""
         for feature in self.data["features"]:
             if feature["id"] == "Elevation":
                 coords = feature["geometry"]["coordinates"]
@@ -77,11 +75,44 @@ class GreenVisualizer:
                 coords = feature["geometry"]["coordinates"]
                 self.green_border = Polygon(coords)
 
-        # Convert point data to numpy arrays
+        # Convert point data to numpy arrays for elevation points
         self.xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
         self.zs = np.array([p["z"] for p in self.elevation_points])
-        self.x_min, self.x_max = min(self.xys[:, 0]), max(self.xys[:, 0])
-        self.y_min, self.y_max = min(self.xys[:, 1]), max(self.xys[:, 1])
+
+        # Smooth the green border
+        self.green_border = self._smooth_and_densify_edge()
+
+        # Now interpolate Z values for the border points
+        border_points = np.array(self.green_border.exterior.coords)
+
+        # Create a spatial interpolator using the elevation data
+        from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+
+        # First try linear interpolation for the borders
+        interpolator = LinearNDInterpolator(self.xys, self.zs)
+        border_z = interpolator(border_points[:, 0], border_points[:, 1])
+
+        # Some points might be outside the convex hull of data points
+        # Fill in any NaN values using nearest neighbor interpolation
+        if np.any(np.isnan(border_z)):
+            nearest_interp = NearestNDInterpolator(self.xys, self.zs)
+            nan_indices = np.isnan(border_z)
+            border_z[nan_indices] = nearest_interp(
+                border_points[nan_indices, 0], border_points[nan_indices, 1]
+            )
+
+        # Combine original elevation points with the border points
+        all_x = np.append(self.xys[:, 0], border_points[:, 0])
+        all_y = np.append(self.xys[:, 1], border_points[:, 1])
+        all_z = np.append(self.zs, border_z)
+
+        # Update the point data arrays with the combined points
+        self.xys = np.column_stack([all_x, all_y])
+        self.zs = all_z
+
+        adjustment_factor = 0.000001  # 0.11 meters adjustment
+        self.x_min, self.x_max = min(self.xys[:, 0]) - adjustment_factor, max(self.xys[:, 0]) + adjustment_factor
+        self.y_min, self.y_max = min(self.xys[:, 1]) - adjustment_factor, max(self.xys[:, 1]) + adjustment_factor
 
         # Create 2d grid points with consistent spacing
         self.x_range = self.x_max - self.x_min
@@ -99,12 +130,12 @@ class GreenVisualizer:
         # Set up the figure
         center_lat = (self.y_min + self.y_max) / 2
         center_lat_rad = np.pi * center_lat / 180
-        width_meters = self.x_range * lat_to_meter_ratio * np.cos(center_lat_rad)
-        height_meters = self.y_range * lat_to_meter_ratio
+        self.width_meters = self.x_range * lat_to_meter_ratio * np.cos(center_lat_rad)
+        self.height_meters = self.y_range * lat_to_meter_ratio
 
         # 计算需要的像素数
-        pixels_width = int(width_meters / target_meters_per_pixel)
-        pixels_height = int(height_meters / target_meters_per_pixel)
+        pixels_width = int(self.width_meters / target_meters_per_pixel)
+        pixels_height = int(self.height_meters / target_meters_per_pixel)
 
         # 计算所需的figure尺寸和dpi
         fig_width = pixels_width / dpi
@@ -128,35 +159,33 @@ class GreenVisualizer:
         Returns:
             Polygon: 加密后的边界多边形
         """
+        from scipy.interpolate import splprep, splev
+        import numpy as np
+        from shapely.geometry import Polygon
+
         boundary_polygon = self.green_border
         bx, by = boundary_polygon.exterior.xy
-        boundary_points = np.column_stack([bx, by])
 
-        # 计算相邻点之间的距离
-        distances = np.sqrt(np.sum(np.diff(boundary_points, axis=0) ** 2, axis=1))
-        d_avg = np.mean(distances)
+        # Remove consecutive duplicate points that might cause issues
+        points = np.column_stack([bx, by])
+        # Remove the last point if it's the same as the first (common in polygons)
+        if np.array_equal(points[0], points[-1]):
+            points = points[:-1]
 
-        # 基于平均距离进行插值
-        dense_points = []
-        for i in range(len(boundary_points)):
-            p1 = boundary_points[i]
-            p2 = boundary_points[(i + 1) % len(boundary_points)]  # 循环到第一个点
+        # Use splprep/splev which handles closed curves better
+        # s=0 means no smoothing, just interpolation
+        tck, u = splprep([points[:, 0], points[:, 1]], s=0, per=1)
 
-            dense_points.append(p1)
-            d = np.sqrt(np.sum((p2 - p1) ** 2))
+        # Generate new points along the spline
+        # Increase density by sampling more points (u between 0 and 1)
+        u_new = np.linspace(0, 1, len(points) * green_edge_sampling_factor, endpoint=False)
 
-            if d > d_avg:
-                # 计算需要插入的点数
-                n_points = int(d / d_avg) * 2
-                # 生成插值点
-                for j in range(1, n_points):
-                    t = j / n_points
-                    interpolated_point = p1 + t * (p2 - p1)
-                    dense_points.append(interpolated_point)
+        # Evaluate the spline at the new points
+        smooth_x, smooth_y = splev(u_new, tck)
+        smooth_points = np.column_stack([smooth_x, smooth_y])
 
-        dense_points = np.array(dense_points)
-        print(f"加密点数: {len(boundary_points)} -> {len(dense_points)}")
-        return Polygon(dense_points)
+        print(f"Smoothed points: {len(points)} -> {len(smooth_points)}")
+        return Polygon(smooth_points)
 
     def _generate_masks(self):
         boundary_polygon = self.green_border
@@ -212,7 +241,7 @@ class GreenVisualizer:
             cmap="viridis",
         )
         # 绘制边界
-        smooth_polygon = self._smooth_and_densify_edge()
+        smooth_polygon = self.green_border # already smoothed
         bx, by = smooth_polygon.exterior.xy
         plt.scatter(bx, by, marker="o", label="Boundary", color="red")
         plt.gca().set_aspect("equal", adjustable="box")
@@ -226,11 +255,62 @@ class GreenVisualizer:
         )
         plt.close()
 
+    def _get_arrow_parameters(self):
+        """
+        Calculate arrow spacing and size based on density parameter
+        to ensure even distribution with natural appearance.
+        """
+        # Calculate meters per grid cell
+        meters_per_x_cell = self.width_meters / self.x_grid_num
+        meters_per_y_cell = self.height_meters / self.y_grid_num
+
+        # Calculate intervals based on physical dimensions and desired spacing
+        x_arrow_interval = max(4, int(arrow_spacing_in_meters / meters_per_x_cell))
+        y_arrow_interval = max(4, int(arrow_spacing_in_meters / meters_per_y_cell))
+
+        # Calculate approximate number of arrows
+        num_arrows_x = self.x_grid_num // x_arrow_interval
+        num_arrows_y = self.y_grid_num // y_arrow_interval
+
+        # Use square root for more natural scaling of arrow parameters with density
+        density_factor = np.sqrt(1 / max(x_arrow_interval, y_arrow_interval))
+
+        # Base width with more gentle scaling
+        arrow_width = 0.01
+
+        # Scale other arrow parameters with improved proportions
+        arrow_headwidth = 6
+        arrow_headlength = 6
+        arrow_headaxislength = 6
+
+        # Adjust arrow length scale for better appearance at lower densities
+        arrow_length_scale_base = 70
+        base_scale = arrow_length_scale_base * (1 + (1 - density_factor))
+        arrow_length_scale = base_scale * density_factor
+
+        return {
+            'num_arrows_x': num_arrows_x,
+            'num_arrows_y': num_arrows_y,
+            'x_interval': x_arrow_interval,
+            'y_interval': y_arrow_interval,
+            'width': arrow_width,
+            'headwidth': arrow_headwidth,
+            'headlength': arrow_headlength,
+            'headaxislength': arrow_headaxislength,
+            'length_scale': arrow_length_scale
+        }
+
+    def _eps_gradient(self, zi):
+        epsilon = 1e-8
+        gradient_y, gradient_x = np.gradient(zi)
+        magnitude = np.hypot(gradient_x, gradient_y)
+        magnitude = np.where(magnitude < epsilon, epsilon, magnitude)
+        return -gradient_x / magnitude, -gradient_y / magnitude
+
     def _plot(self):
         # 生成掩码和插值结果
         mask, xi_masked, yi_masked, zi_masked = self._generate_masks()
 
-        # todo: the edge is not smooth enough
         # Paint the color gradient
         levels = np.linspace(self.zs.min(), self.zs.max(), elevation_levels)
         custom_cmap = colors.LinearSegmentedColormap.from_list(
@@ -240,59 +320,43 @@ class GreenVisualizer:
             xi_masked, yi_masked, zi_masked, levels=levels, cmap=custom_cmap
         )
 
-        # Paint contour lines
-        self.ax.contour(
-            xi_masked, yi_masked, zi_masked, levels=levels, colors="k", alpha=0.1
-        )
+        # Plot the green border
+        bx, by = self.green_border.exterior.xy
+        self.ax.plot(bx, by, color="black", linewidth=1.3)
 
-        # Paint gradient arrows
-        dx, dy = np.gradient(zi_masked)
-        x_spacing = self.x_range / self.x_grid_num
-        y_spacing = self.y_range / self.y_grid_num
-        dx = dx / x_spacing
-        dy = dy / y_spacing
-        magnitude = np.sqrt(dx**2 + dy**2)
-        dx_normalized = dx / magnitude
-        dy_normalized = dy / magnitude
-        x_arrow_interval = int(self.x_grid_num / arrow_count)
-        x_arrow_interval = max(x_arrow_interval, arrow_interval_min)
-        x_arrow_interval = min(x_arrow_interval, arrow_interval_max)
-        y_arrow_interval = int(self.y_grid_num / arrow_count)
-        y_arrow_interval = max(y_arrow_interval, arrow_interval_min)
-        y_arrow_interval = min(y_arrow_interval, arrow_interval_max)
-        json_file_index = self.output_path.split("/")[-1].split(".")[0]
-        print(
-            f"json_file_index: {json_file_index} => x_grid_num: {self.x_grid_num}, y_grid_num: {self.y_grid_num}, "
-            f"x_arrow_interval: {x_arrow_interval}, y_arrow_interval: {y_arrow_interval}"
-        )
-        skip = (
-            slice(arrow_padding, -arrow_padding, y_arrow_interval),
-            slice(arrow_padding, -arrow_padding, x_arrow_interval),
-        )
-        mask_skip = mask[skip]
-        diagonal_grid_num = np.sqrt(self.x_grid_num**2 + self.y_grid_num**2)
-        arrow_length_scale = (
-            arrow_length_scale_base * self.x_grid_num / diagonal_grid_num
-        )
-        print(
-            f"diagonal_grid_num: {diagonal_grid_num}, arrow length scale: {arrow_length_scale}"
-        )
+        arrows_params = self._get_arrow_parameters()
+
+        # Calculate gradient for arrows & arrow grid creation
+        dx, dy = self._eps_gradient(zi_masked)
+        y_idx = np.linspace(0, self.xi.shape[0] - 1, arrows_params["num_arrows_x"], dtype=int)
+        x_idx = np.linspace(0, self.xi.shape[1] - 1, arrows_params["num_arrows_y"], dtype=int)
+
+        indices = np.ix_(y_idx, x_idx)
+
+        X = self.xi[indices]
+        Y = self.yi[indices]
+        U = dx[indices]
+        V = dy[indices]
+
+        buffered = self.green_border.buffer(-1e-5)
+        valid = np.array([
+            buffered.contains(Point(x, y))
+            for x, y in zip(X.ravel(), Y.ravel())
+        ]).reshape(X.shape)
+
         self.ax.quiver(
-            xi_masked[skip][mask_skip],
-            yi_masked[skip][mask_skip],
-            -dy_normalized[skip][mask_skip],
-            -dx_normalized[skip][mask_skip],
-            scale=arrow_length_scale,
-            scale_units="width",
-            units="width",
-            width=0.005,
-            headwidth=6,
-            headlength=6,
-            headaxislength=4,
-            minshaft=1,
-            minlength=3,
-            color="white",
-            alpha=1,
+            X[valid],
+            Y[valid],
+            U[valid],
+            V[valid],
+            color="black",
+            scale=arrows_params["length_scale"],
+            width=arrows_params["width"],
+            headwidth=arrows_params["headwidth"],
+            headlength=arrows_params["headlength"],
+            headaxislength=arrows_params["headaxislength"],
+            minshaft=1.8,
+            pivot="middle",
         )
         plt.savefig(
             self.output_path,
@@ -305,7 +369,6 @@ class GreenVisualizer:
 
     def process_file(self, json_path, output_path):
         """Process single file"""
-        self._reset()
         self.output_path = output_path
         self.data = self._load_json(json_path)
         self._init()
@@ -315,10 +378,10 @@ class GreenVisualizer:
 
 
 if __name__ == "__main__":
-    visualizer = GreenVisualizer()
     try:
         # run all the 18 testcases
         for i in range(1, 19):
+            visualizer = GreenVisualizer()
             json_file = f"testcases/json/{i}.json"
             png_file = json_file.replace(".json", ".png").replace("/json", "/map")
             visualizer.process_file(json_file, png_file)
