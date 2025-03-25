@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from scipy.interpolate import griddata
 import numpy as np
+from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator, splprep, splev
+
 dpi = 300
 target_meters_per_pixel = 0.02
 lat_to_meter_ratio = 111000
@@ -85,9 +87,6 @@ class GreenVisualizer:
         # Now interpolate Z values for the border points
         border_points = np.array(self.green_border.exterior.coords)
 
-        # Create a spatial interpolator using the elevation data
-        from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
-
         # First try linear interpolation for the borders
         interpolator = LinearNDInterpolator(self.xys, self.zs)
         border_z = interpolator(border_points[:, 0], border_points[:, 1])
@@ -159,9 +158,6 @@ class GreenVisualizer:
         Returns:
             Polygon: 加密后的边界多边形
         """
-        from scipy.interpolate import splprep, splev
-        import numpy as np
-        from shapely.geometry import Polygon
 
         boundary_polygon = self.green_border
         bx, by = boundary_polygon.exterior.xy
