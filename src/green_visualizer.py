@@ -1,4 +1,7 @@
 import json
+
+from matplotlib.patches import PathPatch
+from matplotlib.path import Path
 from shapely.geometry import Point, Polygon
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -346,8 +349,14 @@ class GreenVisualizer:
         # Plot the green border
         bx, by = self.green_border.exterior.xy
         self.ax.plot(bx, by, color="black", linewidth=3)
+        polygon_path = Path(np.column_stack((bx, by)))
+        clip_patch = PathPatch(polygon_path,
+                               transform=self.ax.transData,
+                               facecolor='none',
+                               edgecolor='none')
 
         arrows_params = self._get_arrow_parameters()
+        print(f"Arrow parameters: {arrows_params}")
 
         # Calculate gradient for arrows & arrow grid creation
         dx, dy = self._eps_gradient(zi_masked)
@@ -391,6 +400,7 @@ class GreenVisualizer:
             headaxislength=arrows_params["headaxislength"],
             minshaft=1.8,
             pivot="middle",
+            clip_path=clip_patch,
         )
         plt.savefig(
             self.output_path,
