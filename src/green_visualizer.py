@@ -5,13 +5,17 @@ import matplotlib.colors as colors
 from scipy.interpolate import griddata
 import numpy as np
 from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator, splprep, splev
+from pyproj import Transformer, CRS
+
+input_crs = CRS.from_string('EPSG:4326')
+output_crs = CRS.from_string('EPSG:3857')
+transformer = Transformer.from_crs(input_crs, output_crs, always_xy=True)
 
 dpi = 300
 target_meters_per_pixel = 0.02
-lat_to_meter_ratio = 111000
 base_grid_num = 400
 # Added default arrow density parameter
-arrow_spacing_in_meters = 2
+arrow_spacing_in_meters = 6
 # Increase density by sampling more points (higher the more sample points)
 green_edge_sampling_factor = 3
 
@@ -60,6 +64,19 @@ class GreenVisualizer:
         self.width_meters = None
         self.height_meters = None
         self.ax = None
+        self.transformer = None
+
+    def _transform_coordinates(self, coords):
+        if isinstance(coords, list):
+            coords = np.array(coords)
+
+        # Handle both single point and multiple points
+        if coords.ndim == 1:
+            x, y = transformer.transform(coords[0], coords[1])
+            return np.array([x, y])
+        else:
+            transformed = np.array([transformer.transform(lon, lat) for lon, lat in coords])
+            return transformed
 
     @staticmethod
     def _load_json(json_path):
@@ -70,12 +87,14 @@ class GreenVisualizer:
         for feature in self.data["features"]:
             if feature["id"] == "Elevation":
                 coords = feature["geometry"]["coordinates"]
+                transformed_xy = self._transform_coordinates(coords[:2])
                 self.elevation_points.append(
-                    {"x": coords[0], "y": coords[1], "z": coords[2]}
+                    {"x": transformed_xy[0], "y": transformed_xy[1], "z": coords[2]}
                 )
             elif feature["id"] == "GreenBorder":
                 coords = feature["geometry"]["coordinates"]
-                self.green_border = Polygon(coords)
+                transformed_coords = self._transform_coordinates(coords)
+                self.green_border = Polygon(transformed_coords)
 
         # Convert point data to numpy arrays for elevation points
         self.xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
@@ -109,7 +128,7 @@ class GreenVisualizer:
         self.xys = np.column_stack([all_x, all_y])
         self.zs = all_z
 
-        adjustment_factor = 0.000001  # 0.11 meters adjustment
+        adjustment_factor = 0.11 # 0.11 meters adjustment
         self.x_min, self.x_max = min(self.xys[:, 0]) - adjustment_factor, max(self.xys[:, 0]) + adjustment_factor
         self.y_min, self.y_max = min(self.xys[:, 1]) - adjustment_factor, max(self.xys[:, 1]) + adjustment_factor
 
@@ -127,10 +146,8 @@ class GreenVisualizer:
         self.xi, self.yi = np.meshgrid(self.xi, self.yi)
 
         # Set up the figure
-        center_lat = (self.y_min + self.y_max) / 2
-        center_lat_rad = np.pi * center_lat / 180
-        self.width_meters = self.x_range * lat_to_meter_ratio * np.cos(center_lat_rad)
-        self.height_meters = self.y_range * lat_to_meter_ratio
+        self.width_meters = self.x_range
+        self.height_meters = self.y_range
 
         # 计算需要的像素数
         pixels_width = int(self.width_meters / target_meters_per_pixel)
@@ -140,12 +157,14 @@ class GreenVisualizer:
         fig_width = pixels_width / dpi
         fig_height = pixels_height / dpi
 
+        print(f"{self.width_meters}, {self.height_meters}, {pixels_width}, {pixels_height}, {fig_width}, {fig_height}")
+
         _, self.ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
         self.ax.spines["top"].set_visible(False)
         self.ax.spines["right"].set_visible(False)
         self.ax.spines["bottom"].set_visible(False)
         self.ax.spines["left"].set_visible(False)
-        self.ax.set_aspect("equal")
+        self.ax.set_aspect("equal", adjustable='box')
         self.ax.set_xticks([])
         self.ax.set_yticks([])
         self.ax.set_xlim(self.x_min, self.x_max)
@@ -198,33 +217,47 @@ class GreenVisualizer:
 
         # 在边界附近增加插值点
         boundary_points = np.array(boundary_polygon.exterior.coords)
-        # 获取边界上的高程值，使用nearest
         boundary_z = griddata(self.xys, self.zs, boundary_points, method="nearest")
 
         # 将边界点及其高程值添加到插值数据中
         xys_enhanced = np.vstack([self.xys, boundary_points])
         zs_enhanced = np.hstack([self.zs, boundary_z])
 
+        # Create Z value for Contour line drawing
         # 首先使用linear方法进行插值，确保所有点都有值
-        zi_linear = griddata(
-            xys_enhanced, zs_enhanced, (self.xi, self.yi), method="linear"
-        )
-
+        zi_linear_contour = griddata(xys_enhanced, zs_enhanced, (self.xi, self.yi), method="linear")
         # 然后使用cubic方法进行平滑
-        valid_mask = ~np.isnan(zi_linear)
+        valid_mask = ~np.isnan(zi_linear_contour)
         if np.any(~valid_mask):
             print(f"发现 {np.sum(~valid_mask)} 个无效点，使用linear插值")
-            zi = zi_linear
+            zi_contour = zi_linear_contour
         else:
             # 只在有效区域内使用cubic插值
-            zi = griddata(xys_enhanced, zs_enhanced, (self.xi, self.yi), method="cubic")
+            zi_contour = griddata(xys_enhanced, zs_enhanced, (self.xi, self.yi), method="cubic")
             # 如果cubic插值产生了nan值，回退到linear结果
-            nan_mask = np.isnan(zi)
+            nan_mask = np.isnan(zi_contour)
             if np.any(nan_mask):
-                zi[nan_mask] = zi_linear[nan_mask]
+                zi_contour[nan_mask] = zi_linear_contour[nan_mask]
+        zi_masked_contour = np.ma.masked_array(zi_contour, ~mask)
+
+        # Create Z values for Arrow Extrapolation
+        # Interpolate using 'linear' first
+        zi_linear = griddata(xys_enhanced, zs_enhanced, (self.xi, self.yi), method="linear")
+
+        nan_mask = np.isnan(zi_linear)
+
+        if np.any(nan_mask):
+            print(f"发现 {np.sum(nan_mask)} 个无效点，执行外推")
+
+            zi_nearest = griddata(xys_enhanced, zs_enhanced, (self.xi, self.yi), method="nearest")
+            zi_linear[nan_mask] = zi_nearest[nan_mask]
+
+        zi_cubic = griddata(xys_enhanced, zs_enhanced, (self.xi, self.yi), method="cubic")
+
+        zi = np.where(np.isnan(zi_cubic), zi_linear, zi_cubic)
 
         zi_masked = np.ma.masked_array(zi, ~mask)
-        return mask, xi_masked, yi_masked, zi_masked
+        return mask, xi_masked, yi_masked, zi_masked, zi_masked_contour
 
     def _plot_edge(self):
         # 绘制点，并根据高程来着色
@@ -264,15 +297,11 @@ class GreenVisualizer:
         x_arrow_interval = max(4, int(arrow_spacing_in_meters / meters_per_x_cell))
         y_arrow_interval = max(4, int(arrow_spacing_in_meters / meters_per_y_cell))
 
-        # Calculate approximate number of arrows
-        num_arrows_x = self.x_grid_num // x_arrow_interval
-        num_arrows_y = self.y_grid_num // y_arrow_interval
-
         # Use square root for more natural scaling of arrow parameters with density
         density_factor = np.sqrt(1 / max(x_arrow_interval, y_arrow_interval))
 
         # Base width with more gentle scaling
-        arrow_width = 0.01
+        arrow_width = 0.04
 
         # Scale other arrow parameters with improved proportions
         arrow_headwidth = 6
@@ -280,13 +309,11 @@ class GreenVisualizer:
         arrow_headaxislength = 6
 
         # Adjust arrow length scale for better appearance at lower densities
-        arrow_length_scale_base = 70
+        arrow_length_scale_base = 30
         base_scale = arrow_length_scale_base * (1 + (1 - density_factor))
         arrow_length_scale = base_scale * density_factor
 
         return {
-            'num_arrows_x': num_arrows_x,
-            'num_arrows_y': num_arrows_y,
             'x_interval': x_arrow_interval,
             'y_interval': y_arrow_interval,
             'width': arrow_width,
@@ -305,7 +332,7 @@ class GreenVisualizer:
 
     def _plot(self):
         # 生成掩码和插值结果
-        mask, xi_masked, yi_masked, zi_masked = self._generate_masks()
+        mask, xi_masked, yi_masked, zi_masked, zi_masked_contour = self._generate_masks()
 
         # Paint the color gradient
         levels = np.linspace(self.zs.min(), self.zs.max(), elevation_levels)
@@ -313,28 +340,39 @@ class GreenVisualizer:
             "custom", colors_gradient_list
         )
         self.ax.contourf(
-            xi_masked, yi_masked, zi_masked, levels=levels, cmap=custom_cmap
+            xi_masked, yi_masked, zi_masked_contour, levels=levels, cmap=custom_cmap
         )
 
         # Plot the green border
         bx, by = self.green_border.exterior.xy
-        self.ax.plot(bx, by, color="black", linewidth=1.3)
+        self.ax.plot(bx, by, color="black", linewidth=3)
 
         arrows_params = self._get_arrow_parameters()
 
         # Calculate gradient for arrows & arrow grid creation
         dx, dy = self._eps_gradient(zi_masked)
-        y_idx = np.linspace(0, self.xi.shape[0] - 1, arrows_params["num_arrows_x"], dtype=int)
-        x_idx = np.linspace(0, self.xi.shape[1] - 1, arrows_params["num_arrows_y"], dtype=int)
 
-        indices = np.ix_(y_idx, x_idx)
 
-        X = self.xi[indices]
-        Y = self.yi[indices]
-        U = dx[indices]
-        V = dy[indices]
+        x_grid = np.arange(self.x_min, self.x_max, arrow_spacing_in_meters)
+        y_grid = np.arange(self.y_min, self.y_max, arrow_spacing_in_meters)
+        X, Y = np.meshgrid(x_grid, y_grid)
 
-        buffered = self.green_border.buffer(-1e-5)
+        # Flatten original grid coordinates
+        xi_flat = self.xi.flatten()
+        yi_flat = self.yi.flatten()
+
+        # Interpolate U and V vectors
+        U = griddata((xi_flat, yi_flat), dx.flatten(), (X, Y), method='linear', fill_value=0)
+        V = griddata((xi_flat, yi_flat), dy.flatten(), (X, Y), method='linear', fill_value=0)
+
+        # Normalize U, V for uniform arrow size
+        magnitude = np.sqrt(U ** 2 + V ** 2)
+        eps = 1e-8
+        U = (U / (magnitude + eps))
+        V = (V / (magnitude + eps))
+
+        # Filter points within green border
+        buffered = self.green_border.buffer(-1.665)
         valid = np.array([
             buffered.contains(Point(x, y))
             for x, y in zip(X.ravel(), Y.ravel())
