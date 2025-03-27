@@ -68,12 +68,13 @@ class GreenVisualizer:
         self.height_meters = None
         self.ax = None
         self.transformer = None
+        self.arrow_spacing_in_meters = None
+        self.adj_ratio = None
 
     def _transform_coordinates(self, coords):
         if isinstance(coords, list):
             coords = np.array(coords)
 
-        # Handle both single point and multiple points
         if coords.ndim == 1:
             x, y = transformer.transform(coords[0], coords[1])
             return np.array([x, y])
@@ -159,6 +160,13 @@ class GreenVisualizer:
         # 计算所需的figure尺寸和dpi
         fig_width = pixels_width / dpi
         fig_height = pixels_height / dpi
+
+        self.adj_ratio = self.width_meters / self.height_meters
+
+        if self.adj_ratio < 0.5:
+            self.arrow_spacing_in_meters = 3
+        else:
+            self.arrow_spacing_in_meters = arrow_spacing_in_meters
 
         print(f"{self.width_meters}, {self.height_meters}, {pixels_width}, {pixels_height}, {fig_width}, {fig_height}")
 
@@ -289,41 +297,64 @@ class GreenVisualizer:
 
     def _get_arrow_parameters(self):
         """
-        Calculate arrow spacing and size based on density parameter
-        to ensure even distribution with natural appearance.
+        Calculate arrow spacing and size based on input data characteristics
+        with adaptive scaling for different rectangle/square sizes.
+
+        Aims to maintain consistent visual representation across different data ranges.
         """
-        # Calculate meters per grid cell
-        meters_per_x_cell = self.width_meters / self.x_grid_num
-        meters_per_y_cell = self.height_meters / self.y_grid_num
+        # Total area of the region in square meters
+        total_area = self.width_meters * self.height_meters
 
-        # Calculate intervals based on physical dimensions and desired spacing
-        x_arrow_interval = max(4, int(arrow_spacing_in_meters / meters_per_x_cell))
-        y_arrow_interval = max(4, int(arrow_spacing_in_meters / meters_per_y_cell))
+        # Desired physical spacing between arrows in meters
+        desired_arrow_spacing = self.arrow_spacing_in_meters
 
-        # Use square root for more natural scaling of arrow parameters with density
-        density_factor = np.sqrt(1 / max(x_arrow_interval, y_arrow_interval))
+        # Calculate number of arrows based on area and desired spacing
+        # Use square root to prevent exponential growth
+        estimated_arrow_count = int(np.sqrt(total_area / (desired_arrow_spacing ** 2)))
 
-        # Base width with more gentle scaling
-        arrow_width = 0.04
+        # Adjust parameters based on data range and total area
+        # Normalization factors to provide consistent behavior
+        area_normalization_factor = np.log1p(total_area) / 10  # Logarithmic scaling
 
-        # Scale other arrow parameters with improved proportions
-        arrow_headwidth = 6
-        arrow_headlength = 6
-        arrow_headaxislength = 6
+        # Arrow width - proportional to the smallest cell dimension
+        min_cell_size = min(self.width_meters / self.x_grid_num,
+                            self.height_meters / self.y_grid_num)
+        arrow_width = max(0.01, min_cell_size / 100)  # Ensure minimum visibility
 
-        # Adjust arrow length scale for better appearance at lower densities
-        arrow_length_scale_base = 30
-        base_scale = arrow_length_scale_base * (1 + (1 - density_factor))
-        arrow_length_scale = base_scale * density_factor
+        # Arrow length scaling
+        # Adjust based on total area and desired spacing
+        if self.adj_ratio >= 1.5:
+            base_arrow_length_scale = 60
+        elif self.adj_ratio >= 0.9:
+            base_arrow_length_scale = 50
+        else:
+            base_arrow_length_scale = 35
+        arrow_length_scale = base_arrow_length_scale * area_normalization_factor
 
+        # Head parameters - proportional to arrow width
+        arrow_headwidth = max(6, int(arrow_width * 150))
+        arrow_headlength = max(6, int(arrow_width * 150))
+        arrow_headaxislength = max(6, int(arrow_width * 150))
+
+        # Density factor - how crowded the arrows should be
+        density_factor = np.clip(
+            np.sqrt(estimated_arrow_count) / 10,  # Soft normalization
+            0.2,  # Minimum density
+            2.0  # Maximum density
+        )
+
+        length_scale = arrow_length_scale * density_factor
+
+        # Final parameter adjustments
         return {
-            'x_interval': x_arrow_interval,
-            'y_interval': y_arrow_interval,
+            'x_interval': max(2, int(desired_arrow_spacing / min_cell_size)),
+            'y_interval': max(2, int(desired_arrow_spacing / min_cell_size)),
             'width': arrow_width,
             'headwidth': arrow_headwidth,
             'headlength': arrow_headlength,
             'headaxislength': arrow_headaxislength,
-            'length_scale': arrow_length_scale
+            'length_scale': length_scale,
+            'estimated_arrow_count': estimated_arrow_count
         }
 
     def _eps_gradient(self, zi):
@@ -332,6 +363,17 @@ class GreenVisualizer:
         magnitude = np.hypot(gradient_x, gradient_y)
         magnitude = np.where(magnitude < epsilon, epsilon, magnitude)
         return -gradient_x / magnitude, -gradient_y / magnitude
+
+    def _rectangular_fit_score(self, polygon, threshold=0.8):
+        minx, miny, maxx, maxy = polygon.bounds
+        bounding_box_area = (maxx - minx) * (maxy - miny)
+
+        if bounding_box_area == 0:
+            return 0, False  # Prevent division by zero
+
+        score = polygon.area / bounding_box_area
+        is_rectangular = score >= threshold
+        return score, is_rectangular
 
     def _plot(self):
         # 生成掩码和插值结果
@@ -362,8 +404,8 @@ class GreenVisualizer:
         dx, dy = self._eps_gradient(zi_masked)
 
 
-        x_grid = np.arange(self.x_min, self.x_max, arrow_spacing_in_meters)
-        y_grid = np.arange(self.y_min, self.y_max, arrow_spacing_in_meters)
+        x_grid = np.arange(self.x_min, self.x_max, self.arrow_spacing_in_meters)
+        y_grid = np.arange(self.y_min, self.y_max, self.arrow_spacing_in_meters)
         X, Y = np.meshgrid(x_grid, y_grid)
 
         # Flatten original grid coordinates
@@ -381,9 +423,14 @@ class GreenVisualizer:
         V = (V / (magnitude + eps))
 
         # Filter points within green border
-        buffered = self.green_border.buffer(-1.665)
+        score, is_rectangular = self._rectangular_fit_score(self.green_border)
+        if is_rectangular:
+            buffer_length = -0.6
+        else:
+            buffer_length = -1.665
+        buffered = self.green_border.buffer(buffer_length)
         valid = np.array([
-            buffered.contains(Point(x, y))
+            buffered.covers(Point(x, y))
             for x, y in zip(X.ravel(), Y.ravel())
         ]).reshape(X.shape)
 
