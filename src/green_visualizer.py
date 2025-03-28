@@ -171,8 +171,11 @@ class GreenVisualizer:
         elif self.adj_ratio > 1.9:
             self.arrow_spacing_in_meters = 5
         else:
-            self.arrow_spacing_in_meters = arrow_spacing_in_meters
-
+            if self.sqrt_area <= 40:
+                self.arrow_spacing_in_meters = arrow_spacing_in_meters - 1
+            else:
+                self.arrow_spacing_in_meters = arrow_spacing_in_meters
+            
         print(f"{self.width_meters}, {self.height_meters}, {pixels_width}, {pixels_height}, {fig_width}, {fig_height}")
 
         _, self.ax = plt.subplots(figsize=(fig_width, fig_height), facecolor="none")
