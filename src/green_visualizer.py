@@ -324,22 +324,22 @@ class GreenVisualizer:
         # Arrow length scaling
         # Adjust based on total area and desired spacing
         if self.adj_ratio >= 1.5:
-            arrow_head_param = 6
+            arrow_head_param = 5
             base_arrow_length_scale = 60
         elif self.adj_ratio >= 1.1:
-            arrow_head_param = 5
+            arrow_head_param = 4
             base_arrow_length_scale = 55
         elif self.adj_ratio >= 0.9:
-            arrow_head_param = 5
+            arrow_head_param = 4
             base_arrow_length_scale = 50
         elif self.adj_ratio >= 0.8:
-            arrow_head_param = 6
+            arrow_head_param = 5
             base_arrow_length_scale = 50    
         elif self.adj_ratio >= 0.6:
-            arrow_head_param = 6.5
+            arrow_head_param = 5.5
             base_arrow_length_scale = 40
         else:
-            arrow_head_param = 6.5
+            arrow_head_param = 5.5
             base_arrow_length_scale = 35
         arrow_length_scale = base_arrow_length_scale * area_normalization_factor
 
