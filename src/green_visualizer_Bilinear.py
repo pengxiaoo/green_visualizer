@@ -427,3 +427,14 @@ if __name__ == "__main__":
         input_file = os.path.join(input_dir, f"{case_id}.json")
         output_file = os.path.join(output_dir, f"{case_id}.png")
         visualizer.process_file(input_file, output_file)
+        
+    # for MacOS
+    # visualizer = GreenVisualizer()
+    # try:
+    #     # run all the 18 testcases
+    #     for i in range(1, 19):
+    #         json_file = f"testcases/json/{i}.json"
+    #         png_file = json_file.replace(".json", ".png").replace("/json", "/map")
+    #         visualizer.process_file(json_file, png_file)
+    # finally:
+    #     plt.close("all")        
