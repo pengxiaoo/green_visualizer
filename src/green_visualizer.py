@@ -471,17 +471,17 @@ class GreenVisualizer:
         self.data = self._load_json(json_path)
         self._init()
         self._plot()
-        self._plot_edge()
         plt.close()
 
 
 if __name__ == "__main__":
     visualizer = GreenVisualizer()
     try:
-        # run all the 18 testcases
-        for i in range(1, 19):
-            json_file = f"testcases/json/{i}.json"
-            png_file = json_file.replace(".json", ".png").replace("/json", "/map")
-            visualizer.process_file(json_file, png_file)
+        # run all the testcases
+        for course_index in range(1, 4):
+            for hole_index in range(1, 19):
+                json_file = f"testcases/json/course{course_index}/{hole_index}.json"
+                png_file = json_file.replace(".json", ".png").replace("/json", "/map")
+                visualizer.process_file(json_file, png_file)
     finally:
         plt.close("all")
