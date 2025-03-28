@@ -324,17 +324,23 @@ class GreenVisualizer:
         # Arrow length scaling
         # Adjust based on total area and desired spacing
         if self.adj_ratio >= 1.5:
+            arrow_head_param = 6
             base_arrow_length_scale = 60
         elif self.adj_ratio >= 0.9:
+            arrow_head_param = 5
+            base_arrow_length_scale = 50
+        elif self.adj_ratio >= 0.8:
+            arrow_head_param = 4
             base_arrow_length_scale = 50
         else:
+            arrow_head_param = 6.5
             base_arrow_length_scale = 35
         arrow_length_scale = base_arrow_length_scale * area_normalization_factor
 
         # Head parameters - proportional to arrow width
-        arrow_headwidth = max(6, int(arrow_width * 150))
-        arrow_headlength = max(6, int(arrow_width * 150))
-        arrow_headaxislength = max(6, int(arrow_width * 150))
+        arrow_headwidth = arrow_head_param
+        arrow_headlength = arrow_head_param
+        arrow_headaxislength = arrow_head_param
 
         # Density factor - how crowded the arrows should be
         density_factor = np.clip(
