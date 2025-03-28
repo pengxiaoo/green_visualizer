@@ -14,7 +14,7 @@ input_crs = CRS.from_string('EPSG:4326')
 output_crs = CRS.from_string('EPSG:3857')
 transformer = Transformer.from_crs(input_crs, output_crs, always_xy=True)
 
-dpi = 300
+dpi = 200
 target_meters_per_pixel = 0.02
 base_grid_num = 400
 # Added default arrow density parameter
@@ -162,9 +162,9 @@ class GreenVisualizer:
         fig_height = pixels_height / dpi
 
         self.adj_ratio = self.width_meters / self.height_meters
-
-        if self.adj_ratio < 0.5:
-            self.arrow_spacing_in_meters = 3
+        
+        if self.adj_ratio < 0.5 or self.adj_ratio > 1.9:
+            self.arrow_spacing_in_meters = 3.5
         else:
             self.arrow_spacing_in_meters = arrow_spacing_in_meters
 
@@ -326,12 +326,18 @@ class GreenVisualizer:
         if self.adj_ratio >= 1.5:
             arrow_head_param = 6
             base_arrow_length_scale = 60
+        elif self.adj_ratio >= 1.1:
+            arrow_head_param = 5
+            base_arrow_length_scale = 55
         elif self.adj_ratio >= 0.9:
             arrow_head_param = 5
             base_arrow_length_scale = 50
         elif self.adj_ratio >= 0.8:
-            arrow_head_param = 4
-            base_arrow_length_scale = 50
+            arrow_head_param = 6
+            base_arrow_length_scale = 50    
+        elif self.adj_ratio >= 0.6:
+            arrow_head_param = 6.5
+            base_arrow_length_scale = 40
         else:
             arrow_head_param = 6.5
             base_arrow_length_scale = 35
@@ -345,7 +351,7 @@ class GreenVisualizer:
         # Density factor - how crowded the arrows should be
         density_factor = np.clip(
             np.sqrt(estimated_arrow_count) / 10,  # Soft normalization
-            0.2,  # Minimum density
+            0.3,  # Minimum density
             2.0  # Maximum density
         )
 
@@ -454,6 +460,20 @@ class GreenVisualizer:
             minshaft=1.8,
             pivot="middle",
             clip_path=clip_patch,
+        )
+        # 计算东西和南北方向的距离
+        width_text = f"{self.width_meters:.1f}m"
+        height_text = f"{self.height_meters:.1f}m"
+        
+        # todo: remove this after testing
+        # ===在左下角添加文字===
+        self.ax.text(
+            self.x_min + 0.1, 
+            self.y_min + 0.1,
+            f"x: {width_text}\ny: {height_text}\nxy_ratio: {self.adj_ratio:.2f}",
+            fontsize=10,
+            color='black',
+            bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=0.5)
         )
         plt.savefig(
             self.output_path,
