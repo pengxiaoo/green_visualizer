@@ -66,6 +66,7 @@ class GreenVisualizer:
         self.y_grid_num = None
         self.width_meters = None
         self.height_meters = None
+        self.sqrt_area = None
         self.ax = None
         self.transformer = None
         self.arrow_spacing_in_meters = None
@@ -152,6 +153,8 @@ class GreenVisualizer:
         # Set up the figure
         self.width_meters = self.x_range
         self.height_meters = self.y_range
+        self.total_area = self.width_meters * self.height_meters
+        self.sqrt_area = np.sqrt(self.total_area)
 
         # 计算需要的像素数
         pixels_width = int(self.width_meters / target_meters_per_pixel)
@@ -163,8 +166,10 @@ class GreenVisualizer:
 
         self.adj_ratio = self.width_meters / self.height_meters
         
-        if self.adj_ratio < 0.5 or self.adj_ratio > 1.9:
+        if self.adj_ratio < 0.5:
             self.arrow_spacing_in_meters = 3.5
+        elif self.adj_ratio > 1.9:
+            self.arrow_spacing_in_meters = 5
         else:
             self.arrow_spacing_in_meters = arrow_spacing_in_meters
 
@@ -303,24 +308,25 @@ class GreenVisualizer:
         Aims to maintain consistent visual representation across different data ranges.
         """
         # Total area of the region in square meters
-        total_area = self.width_meters * self.height_meters
 
         # Desired physical spacing between arrows in meters
         desired_arrow_spacing = self.arrow_spacing_in_meters
 
         # Calculate number of arrows based on area and desired spacing
         # Use square root to prevent exponential growth
-        estimated_arrow_count = int(np.sqrt(total_area / (desired_arrow_spacing ** 2)))
+        estimated_arrow_count = int(np.sqrt(self.total_area / (desired_arrow_spacing ** 2)))
 
         # Adjust parameters based on data range and total area
         # Normalization factors to provide consistent behavior
-        area_normalization_factor = np.log1p(total_area) / 10  # Logarithmic scaling
+        area_normalization_factor = np.log1p(self.total_area) / 10  # Logarithmic scaling
 
         # Arrow width - proportional to the smallest cell dimension
         min_cell_size = min(self.width_meters / self.x_grid_num,
                             self.height_meters / self.y_grid_num)
         arrow_width = max(0.01, min_cell_size / 100)  # Ensure minimum visibility
-
+        if self.adj_ratio >= 1.8:
+            arrow_width = arrow_width * 0.8
+            
         # Arrow length scaling
         # Adjust based on total area and desired spacing
         if self.adj_ratio >= 1.5:
@@ -344,6 +350,8 @@ class GreenVisualizer:
         arrow_length_scale = base_arrow_length_scale * area_normalization_factor
 
         # Head parameters - proportional to arrow width
+        if self.sqrt_area >= 50:
+            arrow_head_param = arrow_head_param - 0.5
         arrow_headwidth = arrow_head_param
         arrow_headlength = arrow_head_param
         arrow_headaxislength = arrow_head_param
@@ -470,7 +478,7 @@ class GreenVisualizer:
         self.ax.text(
             self.x_min + 0.1, 
             self.y_min + 0.1,
-            f"x: {width_text}\ny: {height_text}\nxy_ratio: {self.adj_ratio:.2f}",
+            f"x: {width_text}\ny: {height_text}\nxy_ratio: {self.adj_ratio:.2f}\nsqrt_area: {self.sqrt_area:.2f}",
             fontsize=10,
             color='black',
             bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=0.5)
