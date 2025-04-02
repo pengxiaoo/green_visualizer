@@ -377,17 +377,6 @@ class GreenVisualizer:
         magnitude = np.where(magnitude < epsilon, epsilon, magnitude)
         return -gradient_x / magnitude, -gradient_y / magnitude
 
-    def _rectangular_fit_score(self, polygon, threshold=0.8):
-        minx, miny, maxx, maxy = polygon.bounds
-        bounding_box_area = (maxx - minx) * (maxy - miny)
-
-        if bounding_box_area == 0:
-            return 0, False  # Prevent division by zero
-
-        score = polygon.area / bounding_box_area
-        is_rectangular = score >= threshold
-        return score, is_rectangular
-
     def _plot(self):
         # 生成掩码和插值结果
         mask, xi_masked, yi_masked, zi_masked, zi_masked_contour = self._generate_masks()
@@ -434,15 +423,8 @@ class GreenVisualizer:
         U = (U / (magnitude + eps))
         V = (V / (magnitude + eps))
 
-        # Filter points within green border
-        score, is_rectangular = self._rectangular_fit_score(self.green_border)
-        if is_rectangular:
-            buffer_length = -0.6
-        else:
-            buffer_length = -1.665
-        buffered = self.green_border.buffer(buffer_length)
         valid = np.array([
-            buffered.covers(Point(x, y))
+            self.green_border.covers(Point(x, y))
             for x, y in zip(X.ravel(), Y.ravel())
         ]).reshape(X.shape)
 
