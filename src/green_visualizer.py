@@ -8,8 +8,8 @@ import numpy as np
 from pyproj import Transformer, CRS
 import json
 
-input_crs = CRS.from_string('EPSG:4326') 
-output_crs = CRS.from_string('EPSG:3857') 
+input_crs = CRS.from_string('EPSG:4326') # 经纬度坐标系
+output_crs = CRS.from_string('EPSG:3857') # 墨卡托坐标系（以米为单位）
 transformer = Transformer.from_crs(input_crs, output_crs, always_xy=True)
 dpi = 200
 target_meters_per_pixel = 0.02
