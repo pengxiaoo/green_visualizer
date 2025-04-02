@@ -1,19 +1,16 @@
-import json
-
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 from shapely.geometry import Point, Polygon
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, LinearNDInterpolator, NearestNDInterpolator, splprep, splev
 import numpy as np
-from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator, splprep, splev
 from pyproj import Transformer, CRS
+import json
 
-input_crs = CRS.from_string('EPSG:4326')
-output_crs = CRS.from_string('EPSG:3857')
+input_crs = CRS.from_string('EPSG:4326') 
+output_crs = CRS.from_string('EPSG:3857') 
 transformer = Transformer.from_crs(input_crs, output_crs, always_xy=True)
-
 dpi = 200
 target_meters_per_pixel = 0.02
 base_grid_num = 400
@@ -21,7 +18,6 @@ base_grid_num = 400
 arrow_spacing_in_meters = 6
 # Increase density by sampling more points (higher the more sample points)
 green_edge_sampling_factor = 3
-
 colors_gradient_list = [
     "#1640C5",  # blue
     "#126ED4",  # light blue
@@ -75,7 +71,6 @@ class GreenVisualizer:
     def _transform_coordinates(self, coords):
         if isinstance(coords, list):
             coords = np.array(coords)
-
         if coords.ndim == 1:
             x, y = transformer.transform(coords[0], coords[1])
             return np.array([x, y])
@@ -133,19 +128,14 @@ class GreenVisualizer:
         self.xys = np.column_stack([all_x, all_y])
         self.zs = all_z
 
-        adjustment_factor = 0.11 # 0.11 meters adjustment
-        self.x_min, self.x_max = min(self.xys[:, 0]) - adjustment_factor, max(self.xys[:, 0]) + adjustment_factor
-        self.y_min, self.y_max = min(self.xys[:, 1]) - adjustment_factor, max(self.xys[:, 1]) + adjustment_factor
+        self.x_min, self.x_max = min(self.xys[:, 0]), max(self.xys[:, 0])
+        self.y_min, self.y_max = min(self.xys[:, 1]), max(self.xys[:, 1])
 
         # Create 2d grid points with consistent spacing
         self.x_range = self.x_max - self.x_min
         self.y_range = self.y_max - self.y_min
-        self.x_grid_num = int(
-            base_grid_num * (self.x_range / max(self.x_range, self.y_range))
-        )
-        self.y_grid_num = int(
-            base_grid_num * (self.y_range / max(self.x_range, self.y_range))
-        )
+        self.x_grid_num = int(base_grid_num * (self.x_range / max(self.x_range, self.y_range)))
+        self.y_grid_num = int(base_grid_num * (self.y_range / max(self.x_range, self.y_range)))
         self.xi = np.linspace(self.x_min, self.x_max, self.x_grid_num)
         self.yi = np.linspace(self.y_min, self.y_max, self.y_grid_num)
         self.xi, self.yi = np.meshgrid(self.xi, self.yi)
@@ -425,7 +415,6 @@ class GreenVisualizer:
 
         # Calculate gradient for arrows & arrow grid creation
         dx, dy = self._eps_gradient(zi_masked)
-
 
         x_grid = np.arange(self.x_min, self.x_max, self.arrow_spacing_in_meters)
         y_grid = np.arange(self.y_min, self.y_max, self.arrow_spacing_in_meters)
