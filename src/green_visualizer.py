@@ -473,6 +473,7 @@ class GreenVisualizer:
         self.data = self._load_json(json_path)
         self._init()
         self._plot()
+        self._plot_edge()
         plt.close()
 
 
