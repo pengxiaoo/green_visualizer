@@ -18,6 +18,9 @@ the output are 3d models, and we need both glb and usdz format.
 
 there is an example of 3d models in [model-examples](./model-examples), in which [1.json](./model-examples/1.json) is the metadata of the model
 
+
+<img src="images/example_3d_model_usdz.png" width="300">
+
 ## Key requirements
 
 - the 2d map and 3d model should be accurately represent the 3d coordinates of the golf green
