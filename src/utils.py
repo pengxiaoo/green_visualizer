@@ -4,8 +4,6 @@ from scipy.ndimage import gaussian_filter1d
 import numpy as np
 from shapely.geometry import Polygon, Point
 from pyproj import Transformer, CRS
-from dataclasses import dataclass
-from typing import Dict, List, Tuple
 
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 root_dir = os.path.dirname(os.path.abspath(os.path.join(os.path.dirname(__file__))))
@@ -81,27 +79,6 @@ def intersection_of_polygons(polygon1, polygons):
     except Exception as e:
         logger.warning(f"计算多边形相交时出错: {e}")
         return None
-
-
-def calculate_pixel_resolution(polygons):
-    west, south, east, north = None, None, None, None
-    for polygon in polygons:
-        if west is None or polygon.bounds[0] < west:
-            west = polygon.bounds[0]
-        if south is None or polygon.bounds[1] < south:
-            south = polygon.bounds[1]
-        if east is None or polygon.bounds[2] > east:
-            east = polygon.bounds[2]
-        if north is None or polygon.bounds[3] > north:
-            north = polygon.bounds[3]
-    width_meters = east - west
-    height_meters = north - south
-    pixels_width = int(width_meters / meters_per_pixel)
-    pixels_height = int(height_meters / meters_per_pixel)
-    fig_width = pixels_width / dpi
-    fig_height = pixels_height / dpi
-    marker_pixels = marker_in_meters / meters_per_pixel  # 标记应该占用的像素数
-    return west, south, east, north, fig_width, fig_height, dpi, marker_pixels
 
 
 def transform_coordinates(coords):
