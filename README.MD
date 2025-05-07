@@ -9,14 +9,14 @@ in [testcases/input](./testcases/input/)
 ### Green 2d
 the output are png files, each file is a 2d map of a golf green, for example:
 
-<img src="images/example_contour_map_1.png" width="300">
+<img src="images/example_contour_map_1.png" width="200">
 
-<img src="images/example_contour_map_2.png" width="300">
+<img src="images/example_contour_map_2.png" width="200">
 
 ### Green 3d
 the output are 3d models, and we need both glb and usdz format.
 
-there is an example of 3d models in [model-examples](./model-examples), in which [1.json](./model-examples/1.json) is the metadata of the model
+there is an example of 3d model in [model-examples](./model-examples), in which [1.json](./model-examples/1.json) is the metadata of the model
 
 
 <img src="images/example_3d_model_usdz.png" width="300">
