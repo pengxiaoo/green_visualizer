@@ -334,7 +334,9 @@ class GreenVisualizer:
         if intersection_polygon.is_empty:
             logger.error(f"hole {self.hole_number} green boundary 与 xys 没有相交区域")
         else:
-            logger.info(f"hole {self.hole_number} green boundary 与 xys 相交的区域面积为 {intersection_polygon.area}")
+            logger.info(
+                f"hole {self.hole_number} green boundary 与 xys 相交的区域面积为 {intersection_polygon.area}"
+            )
 
         plt.scatter(bx, by, marker="o", label="Boundary", color="red")
         plt.gca().set_aspect("equal", adjustable="box")
@@ -459,9 +461,7 @@ class GreenVisualizer:
         )
         plt.close()
 
-    def plot_holes(
-        self, holes: list[dict], output_path: str
-    ):
+    def plot_holes(self, holes: list[dict], output_path: str):
         # 先创建目录
         os.makedirs(output_path, exist_ok=True)
         try:
