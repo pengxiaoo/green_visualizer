@@ -41,6 +41,21 @@ This class manages the full data processing pipeline:
 | `_plot_edge()` | (Optional) Plots raw edges for debugging |
 | `cleanup()` | Frees up matplotlib resources between plots |
 
+
+#### _init():
+- Loads elevation and boundary data.
+- Transforms coordinates.
+- Calls `_smooth_and_densify_edge()`: Smooths and densifies the green boundary.
+- Interpolates elevation data for the boundary and grid points.
+- Sets up the plotting figure and axes (`plt.subplots`).
+
+#### _plot(self):
+- Generates a contour map (`_generate_masks()`) with a color gradient (dx dy calculation from `_eps_gradient(zi_masked)`).
+- Calls `get_arrow_width_and_length_scale()`: get pre-defined arrow width and length scale.
+- Adds arrows to represent the slope direction and magnitude (`ax.quiver`).
+- Saves the final visualization as a PNG file (`plt.savefig`).
+
+
 ---
 
 ## 🗺️ Workflow Diagram (Mermaid)
