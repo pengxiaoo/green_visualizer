@@ -116,13 +116,9 @@ class GreenVisualizer:
     def _init(
         self,
         hole: dict,
-        club_id: str,
-        course_id: str,
         output_path: str,
     ):
         self.output_path = output_path
-        self.club_id = club_id
-        self.course_id = course_id
         self.hole_number = hole["hole_number"]
         self.elevation_points = []
         for feature in hole["features"]:
@@ -464,8 +460,8 @@ class GreenVisualizer:
         plt.close()
 
     def plot_holes(
-        self, club_id: str, course_id: str, holes: list[dict], output_path: str
-    ) -> str:
+        self, holes: list[dict], output_path: str
+    ):
         # 先创建目录
         os.makedirs(output_path, exist_ok=True)
         try:
@@ -479,7 +475,7 @@ class GreenVisualizer:
         logger.warning(f"Output directory exists: {os.path.exists(output_path)}")
         for hole in holes:
             try:
-                self._init(hole, club_id, course_id, output_path)
+                self._init(hole, output_path)
                 self._plot()
                 # self._plot_edge()
             except Exception as e:
@@ -500,7 +496,7 @@ if __name__ == "__main__":
                 hole["hole_number"] = hole_index
                 holes.append(hole)
             visualizer.plot_holes(
-                "", "", holes, f"testcases/output/green_2d/course{course_index}"
+                holes, f"testcases/output/green_2d/course{course_index}"
             )
     finally:
         visualizer.cleanup()  # 确保最后清理资源
