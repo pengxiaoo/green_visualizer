@@ -4,6 +4,7 @@ import matplotlib.colors as colors
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 from shapely.geometry import Point, Polygon, MultiPoint
+from shapely import vectorized
 from scipy.interpolate import (
     griddata,
     LinearNDInterpolator,
@@ -252,11 +253,7 @@ class GreenVisualizer2D:
     def _generate_masks(self):
         boundary_polygon = self.green_border
         # 利用boundary_polygon裁剪xi, yi
-        mask = np.zeros_like(self.xi, dtype=bool)
-        for i in range(self.xi.shape[0]):
-            for j in range(self.xi.shape[1]):
-                point = Point(self.xi[i, j], self.yi[i, j])
-                mask[i, j] = boundary_polygon.contains(point)
+        mask = vectorized.contains(boundary_polygon, self.xi, self.yi)
 
         # 应用掩码但保持网格结构
         xi_masked = np.ma.masked_array(self.xi, ~mask)
@@ -413,14 +410,7 @@ class GreenVisualizer2D:
         eps = 1e-8
         U = U / (magnitude + eps)
         V = V / (magnitude + eps)
-
-        valid = np.array(
-            [
-                self.green_border.covers(Point(x, y))
-                for x, y in zip(X.ravel(), Y.ravel())
-            ]
-        ).reshape(X.shape)
-
+        valid = vectorized.contains(self.green_border, X, Y)
         arrow_width, length_scale = get_arrow_width_and_length_scale(
             self.xy_ratio, self.sqrt_area
         )
