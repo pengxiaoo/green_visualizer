@@ -5,6 +5,7 @@ from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 from shapely.geometry import Point, Polygon, MultiPoint
 from shapely import vectorized
+import traceback
 from scipy.interpolate import (
     griddata,
     LinearNDInterpolator,
@@ -25,7 +26,7 @@ import utils
 debug = False
 base_grid_num = 400
 pixel_scale = 1.3
-meters_per_pixel = utils.meters_per_pixel / 2
+meters_per_pixel = utils.meters_per_pixel / 4
 # Increase density by sampling more points (higher the more sample points)
 green_edge_sampling_factor = 3
 colors_gradient_list = [
@@ -377,7 +378,7 @@ class GreenVisualizer2D:
         # Plot the green border
         shrunked_border = self.green_border.buffer(-0.1)
         bx, by = shrunked_border.exterior.xy
-        self.ax.plot(bx, by, color="black", linewidth=1)
+        self.ax.plot(bx, by, color="white", linewidth=1.5)
         polygon_path = Path(np.column_stack((bx, by)))
         clip_patch = PathPatch(
             polygon_path,
@@ -419,7 +420,7 @@ class GreenVisualizer2D:
             Y[valid],
             U[valid],
             V[valid],
-            color="black",
+            color="white",
             scale=length_scale,
             width=arrow_width,
             headwidth=arrow_head_width,
@@ -470,5 +471,6 @@ class GreenVisualizer2D:
                 # self._plot_edge()
             except Exception as e:
                 logger.error(f"hole {hole['hole_number']} 绘制失败: {e}")
+                logger.error(traceback.format_exc())
             finally:
                 self.cleanup()  # 确保资源被清理
