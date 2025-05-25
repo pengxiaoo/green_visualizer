@@ -1,3 +1,4 @@
+import math
 import os
 import logging
 from scipy.ndimage import gaussian_filter1d
@@ -89,3 +90,68 @@ def transform_coordinates(coords):
         return np.array([x, y])
     else:
         return np.array([transformer.transform(lon, lat) for lon, lat in coords])
+
+def get_unique_ascending(arr):
+    ret = list(set(arr))
+    ret.sort()
+    return ret, ret[0], ret[-1]
+
+# Remove values from isolated points
+def get_duplicated_values(values, arr):
+    ret = []
+    for v in values:
+        count = 0
+        for tmp in arr:
+            if tmp == v:
+                count += 1
+        if count >= 5:
+            ret.append(v)
+    return ret
+
+
+def is_same(pointA, pointB):
+    return pointA[0] == pointB[0] and pointA[1] == pointB[1]
+
+# get index of the nearest point on edge cycle from pnt
+# edges[i] is in board index
+def nearest_index(pnt, edges, xdup, ydup):
+    for i in range(len(edges)):
+        edge_point = [xdup[edges[i][0]], ydup[edges[i][1]]]
+        d = math.dist(pnt, edge_point)
+        if i == 0:
+            result = 0
+            min_dist = d
+        else:
+            if d < min_dist:
+                min_dist = d
+                result = i
+
+    return result
+
+# returns an array, starts from a, ends from b
+# a, b are indices on a cycle of length n
+# so select a small path from a to b
+def get_indices(a, b, n):
+    is_reverse = False
+    if a > b:
+        a, b = b, a
+        is_reverse = True
+
+    c = a + n
+
+    if b - a < c - b:
+        ret = [i for i in range(a, b + 1)]
+    else:
+        ret = [i % n for i in range(b, c + 1)]
+        is_reverse = not is_reverse
+
+    if is_reverse:
+        return ret[::-1]
+    else:
+        return ret
+
+
+def get_mid_point(pointA, pointB, ratio):
+    pa = np.asarray(pointA)
+    pb = np.asarray(pointB)
+    return pa * (1 - ratio) + pb * ratio
