@@ -22,8 +22,8 @@ logging.basicConfig(
 )
 logger.info(f"root_dir: {root_dir}")
 smooth_sigma = 1
-dpi = 200
-meters_per_pixel = 0.2
+dpi = 300
+meters_per_pixel = 0.1
 lat_to_meter_ratio = 111000
 base_area = 10 * 10  # 假设10x10英寸为基准尺寸
 marker_in_meters = 3
@@ -104,7 +104,7 @@ def get_duplicated_values(values, arr):
         for tmp in arr:
             if tmp == v:
                 count += 1
-        if count >= 5:
+        if count >= 3:
             ret.append(v)
     return ret
 

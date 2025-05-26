@@ -378,7 +378,7 @@ class GreenVisualizer2D:
         # Plot the green border
         shrunked_border = self.green_border.buffer(-0.1)
         bx, by = shrunked_border.exterior.xy
-        self.ax.plot(bx, by, color="white", linewidth=1.5)
+        self.ax.plot(bx, by, color="black", linewidth=1.5)
         polygon_path = Path(np.column_stack((bx, by)))
         clip_patch = PathPatch(
             polygon_path,
@@ -420,7 +420,7 @@ class GreenVisualizer2D:
             Y[valid],
             U[valid],
             V[valid],
-            color="white",
+            color="black",
             scale=length_scale,
             width=arrow_width,
             headwidth=arrow_head_width,
@@ -439,7 +439,7 @@ class GreenVisualizer2D:
                 f"xy_ratio: {self.xy_ratio:.2f}\nsqrt_area: {self.sqrt_area:.2f}\narrow_width: {arrow_width:.4f}\nlength_scale: {length_scale:.3f}",
                 fontsize=10,
                 color="black",
-                bbox=dict(facecolor="white", alpha=0.7, edgecolor="none", pad=0.5),
+                bbox=dict(facecolor="black", alpha=0.7, edgecolor="none", pad=0.5),
             )
         output_png_path = f"{self.output_path}/{self.hole_number}.png"
         os.makedirs(os.path.dirname(output_png_path), exist_ok=True)
