@@ -416,7 +416,14 @@ class GreenVisualizer3D(GreenVisualizer2D):
         # === Materials ===
         pbr = PbrMetallicRoughness(baseColorTexture={"index": 0, "texCoord": 0}, metallicFactor=0.1)
         material = Material(pbrMetallicRoughness=pbr, doubleSided=True)
-        material2 = Material(doubleSided=True)
+        material2 = Material(
+            pbrMetallicRoughness=PbrMetallicRoughness(
+                baseColorFactor=[0.6, 0.6, 0.6, 1.0],
+                metallicFactor=0.8,  # 较强金属感
+                roughnessFactor=0.6  # 中等粗糙度
+            ),
+            doubleSided=True
+        )
         gltf.materials.extend([material, material2])
 
         # === Mesh Primitives ===
