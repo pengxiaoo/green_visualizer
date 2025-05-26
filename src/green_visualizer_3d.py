@@ -1,3 +1,4 @@
+import os
 import math
 import numpy as np
 from pygltflib import (
@@ -6,7 +7,7 @@ from pygltflib import (
 )
 from pygltflib.utils import Image
 from green_visualizer_2d import GreenVisualizer2D
-from src.utils import nearest_index, transform_coordinates, get_unique_ascending, get_duplicated_values, is_same, \
+from utils import nearest_index, transform_coordinates, get_unique_ascending, get_duplicated_values, is_same, \
     get_indices, get_mid_point
 
 SCALER = 1e-1
@@ -28,16 +29,22 @@ class GreenVisualizer3D(GreenVisualizer2D):
         zarr = []
         cxarr = []  # converted to meters
         cyarr = []
+        cxcenter = None
+        cycenter = None
         for feature in data['features']:
             points = feature['geometry']['coordinates']
-            if feature['geometry']['type'] == 'Point' and len(points) == 3:
+            if feature['id'] == 'Elevation':
                 x, y = transform_coordinates(points[:2])
                 xarr.append(points[0])
                 yarr.append(points[1])
                 zarr.append(points[2])
                 cxarr.append(x)
                 cyarr.append(y)
-
+            if feature['id'] == 'GreenCenter': # one golf course green area has exactly one center
+                cxcenter, cycenter = transform_coordinates(points[:2])
+        # todo(caesar): please use cxcenter, cycenter as the center of the 3d model
+        if cxcenter is None or cycenter is None:
+            raise ValueError("GreenCenter not found in the data")
         xvalues, _, _ = get_unique_ascending(xarr)
         yvalues, _, _ = get_unique_ascending(yarr)
         _, zmin, _ = get_unique_ascending(zarr)
@@ -57,7 +64,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
         points_stored = []
         for feature in data['features']:
             points = feature['geometry']['coordinates']
-            if feature['geometry']['type'] == 'Point' and len(points) == 3:
+            if feature['id'] == 'Elevation':
                 try:
                     x_index = xdup.index(points[0])
                     y_index = ydup.index(points[1])
@@ -232,7 +239,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
 
         # Fill the remaining parts near the edge
         for feature in data['features']:
-            if feature['geometry']['type'] == 'Polygon':
+            if feature['id'] == 'GreenBorder':
                 points = feature['geometry']['coordinates']
                 point_count = len(points)
                 # print('polygon', point_count)
@@ -330,6 +337,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
         gltf = GLTF2()
 
         output_name = f"testcases/output/green_3d/course{course_index}/{hole_index}.glb"
+        os.makedirs(os.path.dirname(output_name), exist_ok=True)
 
         # Add texture
         with open(f"testcases/output/green_2d/course{course_index}/{hole_index}.png", 'rb') as f:
@@ -417,10 +425,18 @@ class GreenVisualizer3D(GreenVisualizer2D):
         gltf.meshes.append(Mesh(primitives=[primitive1, primitive2]))
 
         # === Node and Scene ===
-        gltf.nodes.append(Node(mesh=0))
-        gltf.scenes.append(Scene(nodes=[0]))
+        theta = -math.pi / 2
+        rotation = [math.sin(theta/2), 0, 0, math.cos(theta/2)]
+        node = Node(mesh=0, rotation=rotation)
+        gltf.nodes.append(node)
+        
+        # === Scene ===
+        scene = Scene(nodes=[0])
+        gltf.scenes.append(scene)
         gltf.scene = 0
 
         # === Finalize GLB ===
         gltf.set_binary_blob(buffer_data)
         gltf.save(output_name)
+        
+        # todo(caesar): also need to save as usdz file
