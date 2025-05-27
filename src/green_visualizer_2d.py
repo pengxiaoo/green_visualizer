@@ -48,6 +48,7 @@ colors_gradient_list = [
     "#CA253C",  # red
 ]
 # Added default arrow density parameter
+# todo(caesar): make the arrows smaller and more dense, like in https://github.com/pengxiaoo/green_visualizer/blob/main/model-examples/1.glb
 arrow_spacing_in_meters = 5
 arrow_head_width = 5
 
@@ -367,18 +368,27 @@ class GreenVisualizer2D:
         xi_masked, yi_masked, zi_masked, zi_masked_contour = self._generate_masks()
 
         # Paint the color gradient
-        levels = np.linspace(self.zs.min(), self.zs.max(), len(colors_gradient_list))
+        levels = np.linspace(self.zs.min(), self.zs.max(), len(colors_gradient_list) * 2)
         custom_cmap = colors.LinearSegmentedColormap.from_list(
             "custom", colors_gradient_list
         )
         self.ax.contourf(
             xi_masked, yi_masked, zi_masked_contour, levels=levels, cmap=custom_cmap
         )
+        # Paint contour line in white
+        self.ax.contour(
+            xi_masked, yi_masked, zi_masked_contour, 
+            levels=levels, 
+            colors="white",
+            linestyles='solid',
+            linewidths=0.8,
+            alpha=0.8
+        )
 
         # Plot the green border
         shrunked_border = self.green_border.buffer(-0.1)
         bx, by = shrunked_border.exterior.xy
-        self.ax.plot(bx, by, color="black", linewidth=1.5)
+        # self.ax.plot(bx, by, color="black", linewidth=1.5)
         polygon_path = Path(np.column_stack((bx, by)))
         clip_patch = PathPatch(
             polygon_path,
@@ -420,12 +430,12 @@ class GreenVisualizer2D:
             Y[valid],
             U[valid],
             V[valid],
-            color="black",
+            color="white",
             scale=length_scale,
             width=arrow_width,
             headwidth=arrow_head_width,
             headlength=arrow_head_width,
-            headaxislength=arrow_head_width,
+            headaxislength=arrow_head_width - 2,
             minshaft=1.8,
             pivot="middle",
             clip_path=clip_patch,
