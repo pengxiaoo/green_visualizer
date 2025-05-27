@@ -8,6 +8,7 @@ from pygltflib import (
 )
 from pygltflib.utils import Image
 from PIL import Image as PILImage
+from shapely import Polygon, Point
 from green_visualizer_2d import GreenVisualizer2D
 from src.utils import convert_json_num_to_str
 from utils import nearest_index, transform_coordinates, get_unique_ascending, get_duplicated_values, is_same, \
@@ -21,7 +22,6 @@ class GreenVisualizer3D(GreenVisualizer2D):
         self.green_back = []
         self.green_center = []
         self.hmap = []
-
 
     def get_model_data(self, json_file_path):
         data = self._load_json(json_file_path)
@@ -51,7 +51,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 zarr.append(points[2])
                 cxarr.append(x)
                 cyarr.append(y)
-            if feature['id'] == 'GreenCenter': # one golf course green area has exactly one center
+            if feature['id'] == 'GreenCenter':  # one golf course green area has exactly one center
                 cxcenter, cycenter = transform_coordinates(points[:2])
                 self.green_center = points
             if feature['id'] == 'GreenFront':
@@ -78,6 +78,12 @@ class GreenVisualizer3D(GreenVisualizer2D):
         self.z_min = zmin
         self.z_max = zmax
 
+        # Boundary polygon
+        for feature in data['features']:
+            if feature['id'] == 'GreenBorder':
+                points = feature['geometry']['coordinates']
+                polygon = Polygon(points)
+
         # Init board
         x_count = len(xdup)
         y_count = len(ydup)
@@ -90,6 +96,8 @@ class GreenVisualizer3D(GreenVisualizer2D):
             points = feature['geometry']['coordinates']
             if feature['id'] == 'Elevation':
                 try:
+                    if not polygon.contains(Point(points[:2])):
+                        continue
                     x_index = xdup.index(points[0])
                     y_index = ydup.index(points[1])
                     points_stored.append(points)
@@ -459,10 +467,10 @@ class GreenVisualizer3D(GreenVisualizer2D):
 
         # === Node and Scene ===
         theta = -math.pi / 2
-        rotation = [math.sin(theta/2), 0, 0, math.cos(theta/2)]
+        rotation = [math.sin(theta / 2), 0, 0, math.cos(theta / 2)]
         node = Node(mesh=0, rotation=rotation)
         gltf.nodes.append(node)
-        
+
         # === Scene ===
         scene = Scene(nodes=[0])
         gltf.scenes.append(scene)
@@ -471,7 +479,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
         # === Finalize GLB ===
         gltf.set_binary_blob(buffer_data)
         gltf.save(output_name)
-        
+
         # todo(caesar): also need to save as usdz file
 
     def generate_metadata(self, course_index, hole_index) -> json:
