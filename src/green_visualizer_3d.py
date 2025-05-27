@@ -1,3 +1,4 @@
+import json
 import os
 import math
 import numpy as np
@@ -6,12 +7,22 @@ from pygltflib import (
     PbrMetallicRoughness, Material, Primitive, Mesh, Node, Scene
 )
 from pygltflib.utils import Image
+from PIL import Image as PILImage
 from green_visualizer_2d import GreenVisualizer2D
+from src.utils import convert_json_num_to_str
 from utils import nearest_index, transform_coordinates, get_unique_ascending, get_duplicated_values, is_same, \
     get_indices, get_mid_point
 
 SCALER = 1e-1
 class GreenVisualizer3D(GreenVisualizer2D):
+    def __init__(self):
+        super().__init__()
+        self.green_front = []
+        self.green_back = []
+        self.green_center = []
+        self.hmap = []
+
+
     def get_model_data(self, json_file_path):
         data = self._load_json(json_file_path)
         # Initialize data
@@ -42,17 +53,30 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 cyarr.append(y)
             if feature['id'] == 'GreenCenter': # one golf course green area has exactly one center
                 cxcenter, cycenter = transform_coordinates(points[:2])
+                self.green_center = points
+            if feature['id'] == 'GreenFront':
+                self.green_front = points
+            if feature['id'] == 'GreenBack':
+                self.green_back = points
+
         # todo(caesar): please use cxcenter, cycenter as the center of the 3d model
         if cxcenter is None or cycenter is None:
             raise ValueError("GreenCenter not found in the data")
         xvalues, _, _ = get_unique_ascending(xarr)
         yvalues, _, _ = get_unique_ascending(yarr)
-        _, zmin, _ = get_unique_ascending(zarr)
+        _, zmin, zmax = get_unique_ascending(zarr)
         _, cxmin, cxmax = get_unique_ascending(cxarr)
         _, cymin, cymax = get_unique_ascending(cyarr)
 
         xdup = get_duplicated_values(xvalues, xarr)
         ydup = get_duplicated_values(yvalues, yarr)
+
+        self.x_min = min(xvalues)
+        self.x_max = max(xvalues)
+        self.y_min = min(yvalues)
+        self.y_max = max(yvalues)
+        self.z_min = zmin
+        self.z_max = zmax
 
         # Init board
         x_count = len(xdup)
@@ -342,8 +366,10 @@ class GreenVisualizer3D(GreenVisualizer2D):
         # Add texture
         with open(f"testcases/output/green_2d/course{course_index}/{hole_index}.png", 'rb') as f:
             texture_data = f.read()
+            im = PILImage.open(f"testcases/output/green_2d/course{course_index}/{hole_index}.png")
+            self.hmap = im.size  # (width, height)
 
-        # Get mesh data from json file
+            # Get mesh data from json file
         vertices, indices, texcoords, vertices2, indices2 = self.get_model_data(
             f"testcases/input/course{course_index}/{hole_index}.json"
         )
@@ -447,3 +473,33 @@ class GreenVisualizer3D(GreenVisualizer2D):
         gltf.save(output_name)
         
         # todo(caesar): also need to save as usdz file
+
+    def generate_metadata(self, course_index, hole_index) -> json:
+
+        metadata_output_name = f"testcases/output/green_3d_metadata/course{course_index}/{hole_index}.json"
+        os.makedirs(os.path.dirname(metadata_output_name), exist_ok=True)
+
+        metadata = {
+            "EPSG": "4326",
+            "GREEN_BACK_X": self.green_back[0],
+            "GREEN_BACK_Y": self.green_back[1],
+            "GREEN_FRONT_X": self.green_front[0],
+            "GREEN_FRONT_Y": self.green_front[1],
+            "GREEN_CENTER_X": self.green_center[0],
+            "GREEN_CENTER_Y": self.green_center[1],
+            "HMAP_HEIGHT": self.hmap[0],
+            "HMAP_WIDTH": self.hmap[1],
+            "MAXX": self.x_max,
+            "MAXY": self.y_max,
+            "MAXZ": self.z_max,
+            "MINX": self.x_min,
+            "MINY": self.y_min,
+            "MINZ": self.z_min,
+        }
+
+        metadata = convert_json_num_to_str(metadata)
+
+        with open(metadata_output_name, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=4)
+
+        return metadata

@@ -1,6 +1,8 @@
 import math
 import os
 import logging
+from typing import Union, Dict, Any, List
+
 from scipy.ndimage import gaussian_filter1d
 import numpy as np
 from shapely.geometry import Polygon, Point
@@ -155,3 +157,14 @@ def get_mid_point(pointA, pointB, ratio):
     pa = np.asarray(pointA)
     pb = np.asarray(pointB)
     return pa * (1 - ratio) + pb * ratio
+
+
+def convert_json_num_to_str(json_data: Union[Dict[str, Any], List[Any], int, float, Any]) -> Union[Dict[str, Any], List[Any], str, Any]:
+    if isinstance(json_data, dict):
+        return {k: convert_json_num_to_str(v) for k, v in json_data.items()}
+    elif isinstance(json_data, list):
+        return [convert_json_num_to_str(item) for item in json_data]
+    elif isinstance(json_data, (int, float)):
+        return str(json_data)
+    else:
+        return json_data
