@@ -1,6 +1,8 @@
 import math
 import os
 import logging
+from collections import Counter
+
 from scipy.ndimage import gaussian_filter1d
 import numpy as np
 from shapely.geometry import Polygon, Point
@@ -90,41 +92,34 @@ def transform_coordinates(coords):
         return np.array([x, y])
     else:
         return np.array([transformer.transform(lon, lat) for lon, lat in coords])
-
+# Returns an array, sorted, remove duplicated
+# returns min and max together
+# [5, 1, 3, 2, 1, 4] -> [1, 2, 3, 4, 5]
 def get_unique_ascending(arr):
-    ret = list(set(arr))
-    ret.sort()
+    ret = sorted(set(arr))
     return ret, ret[0], ret[-1]
 
 # Remove values from isolated points
 def get_duplicated_values(values, arr):
-    ret = []
-    for v in values:
-        count = 0
-        for tmp in arr:
-            if tmp == v:
-                count += 1
-        if count >= 3:
-            ret.append(v)
-    return ret
+    counts = Counter(arr)
+    return [v for v in values if counts[v] >= 5]
 
 
 def is_same(pointA, pointB):
-    return pointA[0] == pointB[0] and pointA[1] == pointB[1]
+    return tuple(pointA) == tuple(pointB)
 
 # get index of the nearest point on edge cycle from pnt
 # edges[i] is in board index
 def nearest_index(pnt, edges, xdup, ydup):
-    for i in range(len(edges)):
-        edge_point = [xdup[edges[i][0]], ydup[edges[i][1]]]
+    min_dist = float('inf')
+    result = None
+
+    for i, edge in enumerate(edges):
+        edge_point = [xdup[edge[0]], ydup[edge[1]]]
         d = math.dist(pnt, edge_point)
-        if i == 0:
-            result = 0
+        if d < min_dist:
             min_dist = d
-        else:
-            if d < min_dist:
-                min_dist = d
-                result = i
+            result = i
 
     return result
 
@@ -152,6 +147,14 @@ def get_indices(a, b, n):
 
 
 def get_mid_point(pointA, pointB, ratio):
-    pa = np.asarray(pointA)
-    pb = np.asarray(pointB)
-    return pa * (1 - ratio) + pb * ratio
+    return np.asarray(pointA) * (1 - ratio) + np.asarray(pointB) * ratio
+
+def convert_json_num_to_str(json_data):
+    if isinstance(json_data, dict):
+        return {k: convert_json_num_to_str(v) for k, v in json_data.items()}
+    elif isinstance(json_data, list):
+        return [convert_json_num_to_str(item) for item in json_data]
+    elif isinstance(json_data, (int, float)):
+        return str(json_data)
+    else:
+        return json_data
