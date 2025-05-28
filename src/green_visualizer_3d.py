@@ -66,6 +66,9 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 self.green_front = points
             if feature['id'] == 'GreenBack':
                 self.green_back = points
+            if feature['id'] == 'GreenBorder':
+                points = feature['geometry']['coordinates']
+                self.green_border = Polygon(points)
 
         if cxcenter is None or cycenter is None:
             raise ValueError("GreenCenter not found in the data")
@@ -79,11 +82,6 @@ class GreenVisualizer3D(GreenVisualizer2D):
         ydup = get_duplicated_values(yvalues, yarr)
 
         # Boundary polygon
-        for feature in data['features']:
-            if feature['id'] == 'GreenBorder':
-                points = feature['geometry']['coordinates']
-                self.green_border = Polygon(points)
-
         self.green_border = self._smooth_and_densify_edge()
 
         # Init board
