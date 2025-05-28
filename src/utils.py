@@ -102,7 +102,7 @@ def get_unique_ascending(arr):
 # Remove values from isolated points
 def get_duplicated_values(values, arr):
     counts = Counter(arr)
-    return [v for v in values if counts[v] >= 5]
+    return [v for v in values if counts[v] >= 2]
 
 
 def is_same(pointA, pointB):
@@ -148,6 +148,19 @@ def get_indices(a, b, n):
 
 def get_mid_point(pointA, pointB, ratio):
     return np.asarray(pointA) * (1 - ratio) + np.asarray(pointB) * ratio
+
+def check_winding_order_and_reverse(total_points, total_indices):
+    for i in range(len(total_indices) // 3):
+        indices = total_indices[i * 3: i * 3 + 3]
+        points = []
+        for k in range(3):
+            index = indices[k]
+            point = np.asarray(total_points[index * 3: index * 3 + 2])
+            points.append(point)
+        crss = np.cross(points[1] - points[0], points[2] - points[0])
+        if crss < 0:
+            total_indices[i * 3 + 1], total_indices[i * 3 + 2] = indices[2], indices[1]
+    return total_indices
 
 def convert_json_num_to_str(json_data):
     if isinstance(json_data, dict):

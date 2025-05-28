@@ -10,11 +10,19 @@ from pygltflib.utils import Image
 from PIL import Image as PILImage
 from shapely import Polygon, Point
 from green_visualizer_2d import GreenVisualizer2D
-from src.utils import convert_json_num_to_str
-from utils import nearest_index, transform_coordinates, get_unique_ascending, get_duplicated_values, is_same, \
-    get_indices, get_mid_point
+from utils import (
+    nearest_index,
+    transform_coordinates,
+    get_unique_ascending,
+    get_duplicated_values,
+    is_same,
+    convert_json_num_to_str,
+    check_winding_order_and_reverse,
+    get_indices,
+    get_mid_point
+)
 
-SCALER = 1e-1
+SCALER = 0.1
 class GreenVisualizer3D(GreenVisualizer2D):
     def __init__(self):
         super().__init__()
@@ -59,30 +67,24 @@ class GreenVisualizer3D(GreenVisualizer2D):
             if feature['id'] == 'GreenBack':
                 self.green_back = points
 
-        # todo(caesar): please use cxcenter, cycenter as the center of the 3d model
         if cxcenter is None or cycenter is None:
             raise ValueError("GreenCenter not found in the data")
-        xvalues, _, _ = get_unique_ascending(xarr)
-        yvalues, _, _ = get_unique_ascending(yarr)
-        _, zmin, zmax = get_unique_ascending(zarr)
+        xvalues, self.x_min, self.x_max = get_unique_ascending(xarr)
+        yvalues, self.y_min, self.y_max = get_unique_ascending(yarr)
+        _, self.z_min, self.z_max = get_unique_ascending(zarr)
         _, cxmin, cxmax = get_unique_ascending(cxarr)
         _, cymin, cymax = get_unique_ascending(cyarr)
 
         xdup = get_duplicated_values(xvalues, xarr)
         ydup = get_duplicated_values(yvalues, yarr)
 
-        self.x_min = min(xvalues)
-        self.x_max = max(xvalues)
-        self.y_min = min(yvalues)
-        self.y_max = max(yvalues)
-        self.z_min = zmin
-        self.z_max = zmax
-
         # Boundary polygon
         for feature in data['features']:
             if feature['id'] == 'GreenBorder':
                 points = feature['geometry']['coordinates']
-                polygon = Polygon(points)
+                self.green_border = Polygon(points)
+
+        self.green_border = self._smooth_and_densify_edge()
 
         # Init board
         x_count = len(xdup)
@@ -93,37 +95,39 @@ class GreenVisualizer3D(GreenVisualizer2D):
         point_index = 0
         points_stored = []
         for feature in data['features']:
-            points = feature['geometry']['coordinates']
-            if feature['id'] == 'Elevation':
-                try:
-                    if not polygon.contains(Point(points[:2])):
-                        continue
-                    x_index = xdup.index(points[0])
-                    y_index = ydup.index(points[1])
-                    points_stored.append(points)
+            if feature['id'] != 'Elevation':
+                continue
 
-                    board[x_index][y_index] = point_index
-                    point_index = point_index + 1
-                    cx, cy = transform_coordinates(points[:2])
-                    total_points = total_points + [(cx - cxmin) * SCALER, (cy - cymin) * SCALER, points[2]]
-                    total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
-                except:
-                    pass
+            points = feature['geometry']['coordinates']
+            try:
+                # Skip points outside the green border
+                if not self.green_border.contains(Point(points[:2])):
+                    continue
+
+                # Get grid indices
+                x_index, y_index = xdup.index(points[0]), ydup.index(points[1])
+                points_stored.append(points)
+
+                # Update board and point index
+                board[x_index][y_index] = point_index
+                point_index += 1
+
+                # Transform coordinates and update total points and texcoords
+                cx, cy = transform_coordinates(points[:2])
+                total_points.extend([(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, points[2]])
+                # Create uv normalized coordinates range [0-1]
+                total_texcoords.extend([(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)])
+            except Exception:
+                pass
 
         # Create surface
         for i in range(x_count - 1):
             for j in range(y_count - 1):
-                if board[i][j] >= 0 and board[i][j + 1] >= 0 and board[i + 1][j] >= 0 and board[i + 1][j + 1] >= 0:
-                    # quad_count += 1
-                    total_indices = total_indices + [
-                        board[i][j],
-                        board[i + 1][j],
-                        board[i][j + 1],
-
-                        board[i][j + 1],
-                        board[i + 1][j],
-                        board[i + 1][j + 1],
-                    ]
+                if all(board[x][y] >= 0 for x, y in [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)]):
+                    total_indices.extend([
+                        board[i][j], board[i + 1][j], board[i][j + 1],
+                        board[i][j + 1], board[i + 1][j], board[i + 1][j + 1],
+                    ])
 
         total_edges = []
 
@@ -288,7 +292,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
                         nindex = nearest_index(points[i], edge_points, xdup, ydup)
                         z = guess_elevation(points[i], edge_points[nindex])
                         cx, cy = transform_coordinates(points[i])
-                        total_points += [(cx - cxmin) * SCALER, (cy - cymin) * SCALER, z]
+                        total_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z]
                         total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
                         next_index = point_index_store if i + 1 == point_count else point_index + 1
                         total_indices += [point_index,
@@ -297,8 +301,8 @@ class GreenVisualizer3D(GreenVisualizer2D):
                         point_index += 1
 
                         # add side
-                        side_points += [(cx - cxmin) * SCALER, (cy - cymin) * SCALER, z,
-                                        (cx - cxmin) * SCALER, (cy - cymin) * SCALER, zmin]
+                        side_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z,
+                                        (cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, self.z_min]
                         next_index = 0 if i + 1 == point_count else side_index + 2
                         side_indices += [
                             side_index,  # 0
@@ -321,7 +325,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
                             nindex = nearest_index(start_point, edge_points, xdup, ydup)
                             z = guess_elevation(start_point, edge_points[nindex])
                             cx, cy = transform_coordinates(start_point)
-                            total_points += [(cx - cxmin) * SCALER, (cy - cymin) * SCALER, z]
+                            total_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z]
                             total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
 
                             start_point = next_point
@@ -338,8 +342,8 @@ class GreenVisualizer3D(GreenVisualizer2D):
                             ]
 
                             # add side
-                            side_points += [(cx - cxmin) * SCALER, (cy - cymin) * SCALER, z,
-                                            (cx - cxmin) * SCALER, (cy - cymin) * SCALER, zmin]
+                            side_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z,
+                                            (cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, self.z_min]
                             next_index = 0 if j + 1 == len(c) and i + 1 == point_count else side_index + 2
                             side_indices += [
                                 side_index,  # 0
@@ -352,16 +356,8 @@ class GreenVisualizer3D(GreenVisualizer2D):
                             side_index += 2
                             point_index += 1
 
-        for i in range(len(total_indices) // 3):
-            indices = total_indices[i * 3: i * 3 + 3]
-            points = []
-            for k in range(3):
-                index = indices[k]
-                point = np.asarray(total_points[index * 3: index * 3 + 2])
-                points.append(point)
-            crss = np.cross(points[1] - points[0], points[2] - points[0])
-            if crss < 0:
-                total_indices[i * 3 + 1], total_indices[i * 3 + 2] = indices[2], indices[1]
+        # Check Winding order & Flip if necessary
+        total_indices = check_winding_order_and_reverse(total_points, total_indices)
 
         return total_points, total_indices, total_texcoords, side_points, side_indices
 
