@@ -1,6 +1,7 @@
 venv/
 __pycache__/
 *.pyc
+testcases/output/*
 testcases/output/
 .DS_Store
 .idea/
