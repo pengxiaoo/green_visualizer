@@ -10,7 +10,7 @@ from pygltflib.utils import Image
 from PIL import Image as PILImage
 from shapely import Polygon, Point
 from green_visualizer_2d import GreenVisualizer2D
-from src.utils import convert_json_num_to_str
+from utils import convert_json_num_to_str
 from utils import nearest_index, transform_coordinates, get_unique_ascending, get_duplicated_values, is_same, \
     get_indices, get_mid_point
 
