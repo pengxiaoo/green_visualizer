@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
-from shapely.geometry import Point, Polygon, MultiPoint
+from shapely.geometry import Polygon, MultiPoint
 from shapely import vectorized
 import traceback
 from scipy.interpolate import (
@@ -49,7 +49,7 @@ colors_gradient_list = [
 ]
 # Added default arrow density parameter
 # todo(caesar): make the arrows smaller and more dense, like in https://github.com/pengxiaoo/green_visualizer/blob/main/model-examples/1.glb
-arrow_spacing_in_meters = 5
+arrow_spacing_in_meters = 3
 arrow_head_width = 5
 
 
@@ -81,7 +81,7 @@ def get_arrow_width_and_length_scale(xy_ratio, sqrt_area):
             arrow_width, arrow_length_scale = params
             break
     adjuster = max(1, sqrt_area / 45)
-    return arrow_width / adjuster, arrow_length_scale * adjuster
+    return arrow_width / adjuster, (arrow_length_scale * adjuster) * 2
 
 
 class GreenVisualizer2D:
@@ -435,7 +435,7 @@ class GreenVisualizer2D:
             width=arrow_width,
             headwidth=arrow_head_width,
             headlength=arrow_head_width,
-            headaxislength=arrow_head_width - 2,
+            headaxislength=arrow_head_width - 1,
             minshaft=1.8,
             pivot="middle",
             clip_path=clip_patch,
