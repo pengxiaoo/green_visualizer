@@ -30,6 +30,7 @@ lat_to_meter_ratio = 111000
 base_area = 10 * 10  # 假设10x10英寸为基准尺寸
 marker_in_meters = 3
 marker_icon_pixels = 300
+elevation_in_border_ratio = 0.8
 input_crs = CRS.from_string("EPSG:4326")  # 经纬度坐标系
 output_crs = CRS.from_string("EPSG:3857")  # 墨卡托坐标系（以米为单位）
 transformer = Transformer.from_crs(input_crs, output_crs, always_xy=True)
@@ -171,3 +172,10 @@ def convert_json_num_to_str(json_data):
         return str(json_data)
     else:
         return json_data
+
+# create a function that calculates the % threshold of elevation point that is inside the polygon
+def calculate_elevation_within_border_ratio(polygon, elevations):
+    if not polygon or not elevations:
+        return 0.0
+    inside_count = sum(1 for elevation in elevations if polygon.contains(Point(elevation)))
+    return (inside_count / len(elevations))

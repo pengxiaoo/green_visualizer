@@ -8,7 +8,7 @@ from pygltflib import (
 )
 from pygltflib.utils import Image
 from PIL import Image as PILImage
-from shapely import Polygon, Point
+from shapely import Polygon, Point, MultiPoint
 from green_visualizer_2d import GreenVisualizer2D
 from utils import (
     nearest_index,
@@ -19,7 +19,9 @@ from utils import (
     convert_json_num_to_str,
     check_winding_order_and_reverse,
     get_indices,
-    get_mid_point
+    get_mid_point,
+    calculate_elevation_within_border_ratio,
+    elevation_in_border_ratio
 )
 
 SCALER = 0.1
@@ -81,8 +83,21 @@ class GreenVisualizer3D(GreenVisualizer2D):
         xdup = get_duplicated_values(xvalues, xarr)
         ydup = get_duplicated_values(yvalues, yarr)
 
+        xys = []
+        for x, y in zip(xarr, yarr):
+            xys.append([x, y])
+
+        elevation_points = []
+        for x, y, z in zip(xarr, yarr, zarr):
+            elevation_points.append([x, y, z])
+
+        current_ratio = calculate_elevation_within_border_ratio(self.green_border, xys)
+        if current_ratio < elevation_in_border_ratio:
+            print(f"Warning: Elevation within green border ratio {current_ratio:.2f} is less than the threshold {elevation_in_border_ratio:.2f}. ")
+            self.green_border = MultiPoint(xys).convex_hull
+
         # Boundary polygon
-        self.green_border = self._smooth_and_densify_edge()
+        # self.green_border = self._smooth_and_densify_edge()
 
         # Init board
         x_count = len(xdup)
@@ -272,87 +287,84 @@ class GreenVisualizer3D(GreenVisualizer2D):
         side_index = 0
 
         # Fill the remaining parts near the edge
-        for feature in data['features']:
-            if feature['id'] == 'GreenBorder':
-                points = feature['geometry']['coordinates']
-                point_count = len(points)
-                # print('polygon', point_count)
+        points = [list(coord) for coord in self.green_border.exterior.coords]
+        point_count = len(points)
 
-                for i in range(point_count):
-                    next_i = 0 if i == point_count - 1 else i + 1
+        for i in range(point_count):
+            next_i = 0 if i == point_count - 1 else i + 1
 
-                    a = nearest_index(points[i], edge_points, xdup, ydup)
-                    b = nearest_index(points[next_i], edge_points, xdup, ydup)
+            a = nearest_index(points[i], edge_points, xdup, ydup)
+            b = nearest_index(points[next_i], edge_points, xdup, ydup)
 
-                    c = get_indices(a, b, len(edge_points))
-                    if len(c) == 1:
-                        # add a triangle
-                        nindex = nearest_index(points[i], edge_points, xdup, ydup)
-                        z = guess_elevation(points[i], edge_points[nindex])
-                        cx, cy = transform_coordinates(points[i])
-                        total_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z]
-                        total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
-                        next_index = point_index_store if i + 1 == point_count else point_index + 1
-                        total_indices += [point_index,
-                                          board[edge_points[a][0]][edge_points[a][1]],
-                                          next_index]
-                        point_index += 1
+            c = get_indices(a, b, len(edge_points))
+            if len(c) == 1:
+                # add a triangle
+                nindex = nearest_index(points[i], edge_points, xdup, ydup)
+                z = guess_elevation(points[i], edge_points[nindex])
+                cx, cy = transform_coordinates(points[i])
+                total_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z]
+                total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
+                next_index = point_index_store if i + 1 == point_count else point_index + 1
+                total_indices += [point_index,
+                                  board[edge_points[a][0]][edge_points[a][1]],
+                                  next_index]
+                point_index += 1
 
-                        # add side
-                        side_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z,
-                                        (cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, self.z_min]
-                        next_index = 0 if i + 1 == point_count else side_index + 2
-                        side_indices += [
-                            side_index,  # 0
-                            next_index,  # 1
-                            side_index + 1,  # 2
-                            next_index,  # 1
-                            next_index + 1,  # 3
-                            side_index + 1,  # 2
-                        ]
-                        side_index += 2
+                # add side
+                side_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z,
+                                (cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, self.z_min]
+                next_index = 0 if i + 1 == point_count else side_index + 2
+                side_indices += [
+                    side_index,  # 0
+                    next_index,  # 1
+                    side_index + 1,  # 2
+                    next_index,  # 1
+                    next_index + 1,  # 3
+                    side_index + 1,  # 2
+                ]
+                side_index += 2
 
 
-                    else:
-                        # add quads
-                        start_point = points[i]
-                        for j in range(1, len(c)):  # 1 ~ N -1
-                            next_point = points[next_i] if j == len(c) - 1 else get_mid_point(points[i], points[next_i],
-                                                                                              j / (len(c) - 1))
+            else:
+                # add quads
+                start_point = points[i]
+                for j in range(1, len(c)):  # 1 ~ N -1
+                    next_point = points[next_i] if j == len(c) - 1 else get_mid_point(points[i], points[next_i],
+                                                                                      j / (len(c) - 1))
 
-                            nindex = nearest_index(start_point, edge_points, xdup, ydup)
-                            z = guess_elevation(start_point, edge_points[nindex])
-                            cx, cy = transform_coordinates(start_point)
-                            total_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z]
-                            total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
+                    nindex = nearest_index(start_point, edge_points, xdup, ydup)
+                    z = guess_elevation(start_point, edge_points[nindex])
+                    cx, cy = transform_coordinates(start_point)
+                    total_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z]
+                    total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
 
-                            start_point = next_point
-                            next_index = point_index_store if j + 1 == len(
-                                c) and i + 1 == point_count else point_index + 1
+                    start_point = next_point
+                    next_index = point_index_store if j + 1 == len(
+                        c) and i + 1 == point_count else point_index + 1
 
-                            total_indices += [
-                                point_index,  # 0
-                                next_index,  # 1
-                                board[edge_points[c[j - 1]][0]][edge_points[c[j - 1]][1]],  # 2
-                                next_index,  # 1
-                                board[edge_points[c[j]][0]][edge_points[c[j]][1]],  # 3
-                                board[edge_points[c[j - 1]][0]][edge_points[c[j - 1]][1]],  # 2
-                            ]
+                    total_indices += [
+                        point_index,  # 0
+                        next_index,  # 1
+                        board[edge_points[c[j - 1]][0]][edge_points[c[j - 1]][1]],  # 2
+                        next_index,  # 1
+                        board[edge_points[c[j]][0]][edge_points[c[j]][1]],  # 3
+                        board[edge_points[c[j - 1]][0]][edge_points[c[j - 1]][1]],  # 2
+                    ]
 
-                            # add side
-                            side_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z,
-                                            (cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, self.z_min]
-                            next_index = 0 if j + 1 == len(c) and i + 1 == point_count else side_index + 2
-                            side_indices += [
-                                side_index,  # 0
-                                next_index,  # 1
-                                side_index + 1,  # 2
-                                next_index,  # 1
-                                next_index + 1,  # 3
-                                side_index + 1,  # 2
-                            ]
-                            side_index += 2
-                            point_index += 1
+                    # add side
+                    side_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z,
+                                    (cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, self.z_min]
+                    next_index = 0 if j + 1 == len(c) and i + 1 == point_count else side_index + 2
+                    side_indices += [
+                        side_index,  # 0
+                        next_index,  # 1
+                        side_index + 1,  # 2
+                        next_index,  # 1
+                        next_index + 1,  # 3
+                        side_index + 1,  # 2
+                    ]
+                    side_index += 2
+                    point_index += 1
 
         # Check Winding order & Flip if necessary
         total_indices = check_winding_order_and_reverse(total_points, total_indices)

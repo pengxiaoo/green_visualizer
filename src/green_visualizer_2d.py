@@ -20,6 +20,8 @@ from utils import (
     logger,
     dpi,
     transform_coordinates,
+    calculate_elevation_within_border_ratio,
+    elevation_in_border_ratio
 )
 import utils
 
@@ -139,9 +141,20 @@ class GreenVisualizer2D:
                 self.green_border = Polygon(transformed_coords)
 
         # Convert point data to numpy arrays for elevation points
-        self.xys = np.array([[p["x"], p["y"]] for p in self.elevation_points])
+        elevation_points_list = [[p["x"], p["y"]] for p in self.elevation_points]
+        self.xys = np.array(elevation_points_list)
         self.zs = np.array([p["z"] for p in self.elevation_points])
         self.polygon = MultiPoint(self.xys).convex_hull
+
+        current_ratio = calculate_elevation_within_border_ratio(
+            self.green_border,
+            elevation_points_list
+        )
+        if current_ratio < elevation_in_border_ratio:
+            logger.warning(
+                f"hole {self.hole_number} green border ratio {current_ratio:.3f} < {elevation_in_border_ratio:.3f}, replacing green_border"
+            )
+            self.green_border = MultiPoint(self.xys).convex_hull
 
         # Smooth the green border
         self.green_border = self._smooth_and_densify_edge()
