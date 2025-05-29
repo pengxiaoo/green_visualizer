@@ -25,6 +25,9 @@ from utils import (
 )
 
 SCALER = 0.1
+PEAK_THRESHOLD = 0.04
+PEAK_ADJUST_LOOP_COUNT = 2
+
 class GreenVisualizer3D(GreenVisualizer2D):
     def __init__(self):
         super().__init__()
@@ -96,9 +99,6 @@ class GreenVisualizer3D(GreenVisualizer2D):
             print(f"Warning: Elevation within green border ratio {current_ratio:.2f} is less than the threshold {elevation_in_border_ratio:.2f}. ")
             self.green_border = MultiPoint(xys).convex_hull
 
-        # Boundary polygon
-        # self.green_border = self._smooth_and_densify_edge()
-
         # Init board
         x_count = len(xdup)
         y_count = len(ydup)
@@ -125,13 +125,48 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 board[x_index][y_index] = point_index
                 point_index += 1
 
-                # Transform coordinates and update total points and texcoords
-                cx, cy = transform_coordinates(points[:2])
-                total_points.extend([(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, points[2]])
-                # Create uv normalized coordinates range [0-1]
-                total_texcoords.extend([(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)])
+
             except Exception:
                 pass
+
+        # localized peak-smoothing algorithm
+        def guess_z(row_index, col_index):
+            idx = board[row_index][col_index]
+            if 0 < col_index < y_count - 1:
+                index_first = board[row_index][col_index - 1]
+                index_second = board[row_index][col_index + 1]
+                if index_first >= 0 and index_second >= 0:
+                    z_first = points_stored[index_first][2]
+                    z_second = points_stored[index_second][2]
+                    return (z_first + z_second) / 2
+            return points_stored[idx][2]
+
+        adjusted_count = 0
+        for _ in range(PEAK_ADJUST_LOOP_COUNT):
+            count = 0
+            for i in range(x_count):
+                for k in range(y_count):
+                    if board[i][k] >= 0:  # valid grid point
+                        index = board[i][k]
+                        z0 = points_stored[index][2]
+                        z = guess_z(i, k)
+
+                        if z0 > z + PEAK_THRESHOLD:
+                            points_stored[index][2] = z
+                            count += 1
+            if count == 0:  # not adjusted
+                break
+            adjusted_count += count
+        print(f"Adjusted {adjusted_count} points to reduce peaks.")
+
+        # Transform coordinates & construct texture coordinates
+        for i in range(point_index):
+            points = points_stored[i]
+            # Transform coordinates and update total points and texcoords
+            cx, cy = transform_coordinates(points[:2])
+            total_points.extend([(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, points[2]])
+            # Create uv normalized coordinates range [0-1]
+            total_texcoords.extend([(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)])
 
         # Create surface
         for i in range(x_count - 1):
@@ -216,7 +251,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
             dx, dy = delta
             px += dx
             py += dy
-            if px >= 0 and px < x_count and py >= 0 and py < y_count and board[px][py] >= 0:
+            if 0 <= px < x_count and 0 <= py < y_count and board[px][py] >= 0:
                 return True, board[px][py]
             return False, -1
 
@@ -240,8 +275,8 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 indices.append(index)
                 x += points_stored[index][0]
                 y += points_stored[index][1]
-            x = x / 4
-            y = y / 4
+            x /= 4
+            y /= 4
 
             # cross product of index0, index1, index3
             pa = np.asarray(points_stored[index0])
