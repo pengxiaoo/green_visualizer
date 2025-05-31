@@ -51,7 +51,7 @@ colors_gradient_list = [
 ]
 # Added default arrow density parameter
 # todo(caesar): make the arrows smaller and more dense, like in https://github.com/pengxiaoo/green_visualizer/blob/main/model-examples/1.glb
-arrow_spacing_in_meters = 3
+arrow_spacing_in_meters = 4
 arrow_head_width = 5
 
 
@@ -83,7 +83,7 @@ def get_arrow_width_and_length_scale(xy_ratio, sqrt_area):
             arrow_width, arrow_length_scale = params
             break
     adjuster = max(1, sqrt_area / 45)
-    return arrow_width / adjuster, (arrow_length_scale * adjuster) * 2
+    return arrow_width / adjuster, (arrow_length_scale * adjuster) * 1.5
 
 
 class GreenVisualizer2D:
@@ -452,6 +452,7 @@ class GreenVisualizer2D:
             minshaft=1.8,
             pivot="middle",
             clip_path=clip_patch,
+            zorder=10,
         )
 
         if debug:
