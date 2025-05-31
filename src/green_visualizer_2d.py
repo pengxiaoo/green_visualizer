@@ -50,7 +50,6 @@ colors_gradient_list = [
     "#CA253C",  # red
 ]
 # Added default arrow density parameter
-# todo(caesar): make the arrows smaller and more dense, like in https://github.com/pengxiaoo/green_visualizer/blob/main/model-examples/1.glb
 arrow_spacing_in_meters = 4
 arrow_head_width = 5
 

@@ -518,7 +518,6 @@ class GreenVisualizer3D(GreenVisualizer2D):
         gltf.set_binary_blob(buffer_data)
         gltf.save(output_name)
 
-        # todo(caesar): also need to save as usdz file
 
     def generate_metadata(self, course_index, hole_index) -> json:
 
