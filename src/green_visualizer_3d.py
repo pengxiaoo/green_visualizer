@@ -8,13 +8,27 @@ from pygltflib import (
 )
 from pygltflib.utils import Image
 from PIL import Image as PILImage
-from shapely import Polygon, Point
+from shapely import Polygon, Point, MultiPoint
 from green_visualizer_2d import GreenVisualizer2D
-from utils import convert_json_num_to_str
-from utils import nearest_index, transform_coordinates, get_unique_ascending, get_duplicated_values, is_same, \
-    get_indices, get_mid_point
+from utils import (
+    nearest_index,
+    transform_coordinates,
+    get_unique_ascending,
+    get_duplicated_values,
+    is_same,
+    convert_json_num_to_str,
+    check_winding_order_and_reverse,
+    get_indices,
+    get_mid_point,
+    calculate_elevation_within_border_ratio,
+    elevation_in_border_ratio,
+    logger
+)
 
-SCALER = 1e-1
+SCALER = 0.1
+PEAK_THRESHOLD = 0.04
+PEAK_ADJUST_LOOP_COUNT = 2
+
 class GreenVisualizer3D(GreenVisualizer2D):
     def __init__(self):
         super().__init__()
@@ -23,7 +37,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
         self.green_center = []
         self.hmap = []
 
-    def get_model_data(self, json_file_path):
+    def get_model_data(self, json_file_path, course_index, hole_index):
         data = self._load_json(json_file_path)
         # Initialize data
         total_points = []
@@ -58,31 +72,33 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 self.green_front = points
             if feature['id'] == 'GreenBack':
                 self.green_back = points
+            if feature['id'] == 'GreenBorder':
+                points = feature['geometry']['coordinates']
+                self.green_border = Polygon(points)
 
-        # todo(caesar): please use cxcenter, cycenter as the center of the 3d model
         if cxcenter is None or cycenter is None:
             raise ValueError("GreenCenter not found in the data")
-        xvalues, _, _ = get_unique_ascending(xarr)
-        yvalues, _, _ = get_unique_ascending(yarr)
-        _, zmin, zmax = get_unique_ascending(zarr)
+        xvalues, self.x_min, self.x_max = get_unique_ascending(xarr)
+        yvalues, self.y_min, self.y_max = get_unique_ascending(yarr)
+        _, self.z_min, self.z_max = get_unique_ascending(zarr)
         _, cxmin, cxmax = get_unique_ascending(cxarr)
         _, cymin, cymax = get_unique_ascending(cyarr)
 
         xdup = get_duplicated_values(xvalues, xarr)
         ydup = get_duplicated_values(yvalues, yarr)
 
-        self.x_min = min(xvalues)
-        self.x_max = max(xvalues)
-        self.y_min = min(yvalues)
-        self.y_max = max(yvalues)
-        self.z_min = zmin
-        self.z_max = zmax
+        xys = []
+        for x, y in zip(xarr, yarr):
+            xys.append([x, y])
 
-        # Boundary polygon
-        for feature in data['features']:
-            if feature['id'] == 'GreenBorder':
-                points = feature['geometry']['coordinates']
-                polygon = Polygon(points)
+        elevation_points = []
+        for x, y, z in zip(xarr, yarr, zarr):
+            elevation_points.append([x, y, z])
+
+        current_ratio = calculate_elevation_within_border_ratio(self.green_border, xys)
+        if current_ratio < elevation_in_border_ratio:
+            logger.warning(f"Course {course_index} hole {hole_index} : Elevation within green border ratio {current_ratio:.2f} is less than the threshold {elevation_in_border_ratio:.2f}. ")
+            self.green_border = MultiPoint(xys).convex_hull
 
         # Init board
         x_count = len(xdup)
@@ -93,37 +109,74 @@ class GreenVisualizer3D(GreenVisualizer2D):
         point_index = 0
         points_stored = []
         for feature in data['features']:
-            points = feature['geometry']['coordinates']
-            if feature['id'] == 'Elevation':
-                try:
-                    if not polygon.contains(Point(points[:2])):
-                        continue
-                    x_index = xdup.index(points[0])
-                    y_index = ydup.index(points[1])
-                    points_stored.append(points)
+            if feature['id'] != 'Elevation':
+                continue
 
-                    board[x_index][y_index] = point_index
-                    point_index = point_index + 1
-                    cx, cy = transform_coordinates(points[:2])
-                    total_points = total_points + [(cx - cxmin) * SCALER, (cy - cymin) * SCALER, points[2]]
-                    total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
-                except:
-                    pass
+            points = feature['geometry']['coordinates']
+            try:
+                # Skip points outside the green border
+                if not self.green_border.contains(Point(points[:2])):
+                    continue
+
+                # Get grid indices
+                x_index, y_index = xdup.index(points[0]), ydup.index(points[1])
+                points_stored.append(points)
+
+                # Update board and point index
+                board[x_index][y_index] = point_index
+                point_index += 1
+
+
+            except Exception:
+                pass
+
+        # localized peak-smoothing algorithm
+        def guess_z(row_index, col_index):
+            idx = board[row_index][col_index]
+            if 0 < col_index < y_count - 1:
+                index_first = board[row_index][col_index - 1]
+                index_second = board[row_index][col_index + 1]
+                if index_first >= 0 and index_second >= 0:
+                    z_first = points_stored[index_first][2]
+                    z_second = points_stored[index_second][2]
+                    return (z_first + z_second) / 2
+            return points_stored[idx][2]
+
+        adjusted_count = 0
+        for _ in range(PEAK_ADJUST_LOOP_COUNT):
+            count = 0
+            for i in range(x_count):
+                for k in range(y_count):
+                    if board[i][k] >= 0:  # valid grid point
+                        index = board[i][k]
+                        z0 = points_stored[index][2]
+                        z = guess_z(i, k)
+
+                        if z0 > z + PEAK_THRESHOLD:
+                            points_stored[index][2] = z
+                            count += 1
+            if count == 0:  # not adjusted
+                break
+            adjusted_count += count
+        logger.info(f"Adjusted {adjusted_count} points to reduce peaks.")
+
+        # Transform coordinates & construct texture coordinates
+        for i in range(point_index):
+            points = points_stored[i]
+            # Transform coordinates and update total points and texcoords
+            cx, cy = transform_coordinates(points[:2])
+            total_points.extend([(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, points[2]])
+            # Create uv normalized coordinates range [0-1]
+            total_texcoords.extend([(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)])
 
         # Create surface
         for i in range(x_count - 1):
             for j in range(y_count - 1):
-                if board[i][j] >= 0 and board[i][j + 1] >= 0 and board[i + 1][j] >= 0 and board[i + 1][j + 1] >= 0:
-                    # quad_count += 1
-                    total_indices = total_indices + [
-                        board[i][j],
-                        board[i + 1][j],
-                        board[i][j + 1],
-
-                        board[i][j + 1],
-                        board[i + 1][j],
-                        board[i + 1][j + 1],
-                    ]
+                if all(board[x][y] >= 0 for x, y in [(i, j), (i, j + 1), (i + 1, j), (i + 1, j + 1)]):
+                    total_indices.extend([
+                        board[i][j], board[i + 1][j], board[i][j + 1],
+                        board[i][j + 1], board[i + 1][j], board[i + 1][j + 1],
+                    ])
 
         total_edges = []
 
@@ -171,20 +224,14 @@ class GreenVisualizer3D(GreenVisualizer2D):
 
         edge_points = [current_point]
         while True:
-            found = False
             for i in range(edge_count):
 
                 if is_same(current_point, total_edges[i * 2]) and not is_same(prev_point, total_edges[i * 2 + 1]):
                     next_point = total_edges[i * 2 + 1]
-                    found = True
                     break
                 if is_same(current_point, total_edges[i * 2 + 1]) and not is_same(prev_point, total_edges[i * 2]):
                     next_point = total_edges[i * 2]
-                    found = True
                     break
-
-            if not found:
-                print('not found')
 
             prev_point = current_point
             current_point = next_point
@@ -199,7 +246,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
             dx, dy = delta
             px += dx
             py += dy
-            if px >= 0 and px < x_count and py >= 0 and py < y_count and board[px][py] >= 0:
+            if 0 <= px < x_count and 0 <= py < y_count and board[px][py] >= 0:
                 return True, board[px][py]
             return False, -1
 
@@ -223,8 +270,8 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 indices.append(index)
                 x += points_stored[index][0]
                 y += points_stored[index][1]
-            x = x / 4
-            y = y / 4
+            x /= 4
+            y /= 4
 
             # cross product of index0, index1, index3
             pa = np.asarray(points_stored[index0])
@@ -270,98 +317,87 @@ class GreenVisualizer3D(GreenVisualizer2D):
         side_index = 0
 
         # Fill the remaining parts near the edge
-        for feature in data['features']:
-            if feature['id'] == 'GreenBorder':
-                points = feature['geometry']['coordinates']
-                point_count = len(points)
-                # print('polygon', point_count)
+        points = [list(coord) for coord in self.green_border.exterior.coords]
+        point_count = len(points)
 
-                for i in range(point_count):
-                    next_i = 0 if i == point_count - 1 else i + 1
+        for i in range(point_count):
+            next_i = 0 if i == point_count - 1 else i + 1
 
-                    a = nearest_index(points[i], edge_points, xdup, ydup)
-                    b = nearest_index(points[next_i], edge_points, xdup, ydup)
+            a = nearest_index(points[i], edge_points, xdup, ydup)
+            b = nearest_index(points[next_i], edge_points, xdup, ydup)
 
-                    c = get_indices(a, b, len(edge_points))
-                    if len(c) == 1:
-                        # add a triangle
-                        nindex = nearest_index(points[i], edge_points, xdup, ydup)
-                        z = guess_elevation(points[i], edge_points[nindex])
-                        cx, cy = transform_coordinates(points[i])
-                        total_points += [(cx - cxmin) * SCALER, (cy - cymin) * SCALER, z]
-                        total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
-                        next_index = point_index_store if i + 1 == point_count else point_index + 1
-                        total_indices += [point_index,
-                                          board[edge_points[a][0]][edge_points[a][1]],
-                                          next_index]
-                        point_index += 1
+            c = get_indices(a, b, len(edge_points))
+            if len(c) == 1:
+                # add a triangle
+                nindex = nearest_index(points[i], edge_points, xdup, ydup)
+                z = guess_elevation(points[i], edge_points[nindex])
+                cx, cy = transform_coordinates(points[i])
+                total_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z]
+                total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
+                next_index = point_index_store if i + 1 == point_count else point_index + 1
+                total_indices += [point_index,
+                                  board[edge_points[a][0]][edge_points[a][1]],
+                                  next_index]
+                point_index += 1
 
-                        # add side
-                        side_points += [(cx - cxmin) * SCALER, (cy - cymin) * SCALER, z,
-                                        (cx - cxmin) * SCALER, (cy - cymin) * SCALER, zmin]
-                        next_index = 0 if i + 1 == point_count else side_index + 2
-                        side_indices += [
-                            side_index,  # 0
-                            next_index,  # 1
-                            side_index + 1,  # 2
-                            next_index,  # 1
-                            next_index + 1,  # 3
-                            side_index + 1,  # 2
-                        ]
-                        side_index += 2
+                # add side
+                side_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z,
+                                (cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, self.z_min]
+                next_index = 0 if i + 1 == point_count else side_index + 2
+                side_indices += [
+                    side_index,  # 0
+                    next_index,  # 1
+                    side_index + 1,  # 2
+                    next_index,  # 1
+                    next_index + 1,  # 3
+                    side_index + 1,  # 2
+                ]
+                side_index += 2
 
 
-                    else:
-                        # add quads
-                        start_point = points[i]
-                        for j in range(1, len(c)):  # 1 ~ N -1
-                            next_point = points[next_i] if j == len(c) - 1 else get_mid_point(points[i], points[next_i],
-                                                                                              j / (len(c) - 1))
+            else:
+                # add quads
+                start_point = points[i]
+                for j in range(1, len(c)):  # 1 ~ N -1
+                    next_point = points[next_i] if j == len(c) - 1 else get_mid_point(points[i], points[next_i],
+                                                                                      j / (len(c) - 1))
 
-                            nindex = nearest_index(start_point, edge_points, xdup, ydup)
-                            z = guess_elevation(start_point, edge_points[nindex])
-                            cx, cy = transform_coordinates(start_point)
-                            total_points += [(cx - cxmin) * SCALER, (cy - cymin) * SCALER, z]
-                            total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
+                    nindex = nearest_index(start_point, edge_points, xdup, ydup)
+                    z = guess_elevation(start_point, edge_points[nindex])
+                    cx, cy = transform_coordinates(start_point)
+                    total_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z]
+                    total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
 
-                            start_point = next_point
-                            next_index = point_index_store if j + 1 == len(
-                                c) and i + 1 == point_count else point_index + 1
+                    start_point = next_point
+                    next_index = point_index_store if j + 1 == len(
+                        c) and i + 1 == point_count else point_index + 1
 
-                            total_indices += [
-                                point_index,  # 0
-                                next_index,  # 1
-                                board[edge_points[c[j - 1]][0]][edge_points[c[j - 1]][1]],  # 2
-                                next_index,  # 1
-                                board[edge_points[c[j]][0]][edge_points[c[j]][1]],  # 3
-                                board[edge_points[c[j - 1]][0]][edge_points[c[j - 1]][1]],  # 2
-                            ]
+                    total_indices += [
+                        point_index,  # 0
+                        next_index,  # 1
+                        board[edge_points[c[j - 1]][0]][edge_points[c[j - 1]][1]],  # 2
+                        next_index,  # 1
+                        board[edge_points[c[j]][0]][edge_points[c[j]][1]],  # 3
+                        board[edge_points[c[j - 1]][0]][edge_points[c[j - 1]][1]],  # 2
+                    ]
 
-                            # add side
-                            side_points += [(cx - cxmin) * SCALER, (cy - cymin) * SCALER, z,
-                                            (cx - cxmin) * SCALER, (cy - cymin) * SCALER, zmin]
-                            next_index = 0 if j + 1 == len(c) and i + 1 == point_count else side_index + 2
-                            side_indices += [
-                                side_index,  # 0
-                                next_index,  # 1
-                                side_index + 1,  # 2
-                                next_index,  # 1
-                                next_index + 1,  # 3
-                                side_index + 1,  # 2
-                            ]
-                            side_index += 2
-                            point_index += 1
+                    # add side
+                    side_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z,
+                                    (cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, self.z_min]
+                    next_index = 0 if j + 1 == len(c) and i + 1 == point_count else side_index + 2
+                    side_indices += [
+                        side_index,  # 0
+                        next_index,  # 1
+                        side_index + 1,  # 2
+                        next_index,  # 1
+                        next_index + 1,  # 3
+                        side_index + 1,  # 2
+                    ]
+                    side_index += 2
+                    point_index += 1
 
-        for i in range(len(total_indices) // 3):
-            indices = total_indices[i * 3: i * 3 + 3]
-            points = []
-            for k in range(3):
-                index = indices[k]
-                point = np.asarray(total_points[index * 3: index * 3 + 2])
-                points.append(point)
-            crss = np.cross(points[1] - points[0], points[2] - points[0])
-            if crss < 0:
-                total_indices[i * 3 + 1], total_indices[i * 3 + 2] = indices[2], indices[1]
+        # Check Winding order & Flip if necessary
+        total_indices = check_winding_order_and_reverse(total_points, total_indices)
 
         return total_points, total_indices, total_texcoords, side_points, side_indices
 
@@ -379,7 +415,9 @@ class GreenVisualizer3D(GreenVisualizer2D):
 
             # Get mesh data from json file
         vertices, indices, texcoords, vertices2, indices2 = self.get_model_data(
-            f"testcases/input/course{course_index}/{hole_index}.json"
+            f"testcases/input/course{course_index}/{hole_index}.json",
+            course_index,
+            hole_index
         )
 
         # Add vertices data

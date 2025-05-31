@@ -1,6 +1,5 @@
 from green_visualizer_3d import GreenVisualizer3D
 
-
 if __name__ == "__main__":
     visualizer = GreenVisualizer3D()
     try:
