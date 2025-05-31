@@ -443,7 +443,7 @@ class GreenVisualizer2D:
             Y[valid],
             U[valid],
             V[valid],
-            color="white",
+            color="black",
             scale=length_scale,
             width=arrow_width,
             headwidth=arrow_head_width,
