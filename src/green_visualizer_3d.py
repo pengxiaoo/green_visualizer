@@ -21,7 +21,8 @@ from utils import (
     get_indices,
     get_mid_point,
     calculate_elevation_within_border_ratio,
-    elevation_in_border_ratio
+    elevation_in_border_ratio,
+    logger
 )
 
 SCALER = 0.1
@@ -36,7 +37,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
         self.green_center = []
         self.hmap = []
 
-    def get_model_data(self, json_file_path):
+    def get_model_data(self, json_file_path, course_index, hole_index):
         data = self._load_json(json_file_path)
         # Initialize data
         total_points = []
@@ -96,7 +97,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
 
         current_ratio = calculate_elevation_within_border_ratio(self.green_border, xys)
         if current_ratio < elevation_in_border_ratio:
-            print(f"Warning: Elevation within green border ratio {current_ratio:.2f} is less than the threshold {elevation_in_border_ratio:.2f}. ")
+            logger.warning(f"Course {course_index} hole {hole_index} : Elevation within green border ratio {current_ratio:.2f} is less than the threshold {elevation_in_border_ratio:.2f}. ")
             self.green_border = MultiPoint(xys).convex_hull
 
         # Init board
@@ -157,7 +158,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
             if count == 0:  # not adjusted
                 break
             adjusted_count += count
-        print(f"Adjusted {adjusted_count} points to reduce peaks.")
+        logger.info(f"Adjusted {adjusted_count} points to reduce peaks.")
 
         # Transform coordinates & construct texture coordinates
         for i in range(point_index):
@@ -223,20 +224,14 @@ class GreenVisualizer3D(GreenVisualizer2D):
 
         edge_points = [current_point]
         while True:
-            found = False
             for i in range(edge_count):
 
                 if is_same(current_point, total_edges[i * 2]) and not is_same(prev_point, total_edges[i * 2 + 1]):
                     next_point = total_edges[i * 2 + 1]
-                    found = True
                     break
                 if is_same(current_point, total_edges[i * 2 + 1]) and not is_same(prev_point, total_edges[i * 2]):
                     next_point = total_edges[i * 2]
-                    found = True
                     break
-
-            if not found:
-                print('not found')
 
             prev_point = current_point
             current_point = next_point
@@ -420,7 +415,9 @@ class GreenVisualizer3D(GreenVisualizer2D):
 
             # Get mesh data from json file
         vertices, indices, texcoords, vertices2, indices2 = self.get_model_data(
-            f"testcases/input/course{course_index}/{hole_index}.json"
+            f"testcases/input/course{course_index}/{hole_index}.json",
+            course_index,
+            hole_index
         )
 
         # Add vertices data
