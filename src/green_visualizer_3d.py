@@ -10,6 +10,7 @@ from pygltflib.utils import Image
 from PIL import Image as PILImage
 from shapely import Polygon, Point, MultiPoint
 from green_visualizer_2d import GreenVisualizer2D
+from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 from utils import (
     nearest_index,
     transform_coordinates,
@@ -22,7 +23,9 @@ from utils import (
     get_mid_point,
     calculate_elevation_within_border_ratio,
     elevation_in_border_ratio,
-    logger
+    get_smooth_polygon,
+    logger,
+    reverse_transform_coordinates
 )
 
 SCALER = 0.1
@@ -37,7 +40,8 @@ class GreenVisualizer3D(GreenVisualizer2D):
         self.green_center = []
         self.hmap = []
 
-    def get_model_data(self, json_file_path, course_index, hole_index):
+    def get_model_data(self, json_file_path, hole_index):
+        self.hole_number = hole_index
         data = self._load_json(json_file_path)
         # Initialize data
         total_points = []
@@ -52,10 +56,10 @@ class GreenVisualizer3D(GreenVisualizer2D):
         xarr = []
         yarr = []
         zarr = []
-        cxarr = []  # converted to meters
-        cyarr = []
+
         cxcenter = None
         cycenter = None
+        self.elevation_points = []
         for feature in data['features']:
             points = feature['geometry']['coordinates']
             if feature['id'] == 'Elevation':
@@ -63,8 +67,9 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 xarr.append(points[0])
                 yarr.append(points[1])
                 zarr.append(points[2])
-                cxarr.append(x)
-                cyarr.append(y)
+                self.elevation_points.append(
+                    {"x": x, "y": y, "z": points[2]}
+                )
             if feature['id'] == 'GreenCenter':  # one golf course green area has exactly one center
                 cxcenter, cycenter = transform_coordinates(points[:2])
                 self.green_center = points
@@ -74,31 +79,66 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 self.green_back = points
             if feature['id'] == 'GreenBorder':
                 points = feature['geometry']['coordinates']
-                self.green_border = Polygon(points)
+                self.green_boundaries_raw = points
+                self.bounds_latlon = get_smooth_polygon(points).bounds
+                transformed_coords = transform_coordinates(points)
+                self.green_border = Polygon(transformed_coords)
+        
+        # Convert point data to numpy arrays for elevation points, borrowed from 2d
+        elevation_points_list = [[p["x"], p["y"]] for p in self.elevation_points]
+        self.xys = np.array(elevation_points_list)
+        self.zs = np.array([p["z"] for p in self.elevation_points])
+        self.polygon = MultiPoint(self.xys).convex_hull
+
+        current_ratio = calculate_elevation_within_border_ratio(
+            self.green_border,
+            elevation_points_list
+        )
+        if current_ratio < elevation_in_border_ratio:
+            logger.warning(
+                f"hole {self.hole_number} green border ratio {current_ratio:.3f} < {elevation_in_border_ratio:.3f}, replacing green_border"
+            )
+            self.green_border = MultiPoint(self.xys).convex_hull
+
+        # Smooth the green border
+        self.green_border = self._smooth_and_densify_edge()
+
+        # Now interpolate Z values for the border points
+        border_points = np.array(self.green_border.exterior.coords)
+
+        # First try linear interpolation for the borders
+        interpolator = LinearNDInterpolator(self.xys, self.zs)
+        border_z = interpolator(border_points[:, 0], border_points[:, 1])
+
+        # Some points might be outside the convex hull of data points
+        # Fill in any NaN values using nearest neighbor interpolation
+        if np.any(np.isnan(border_z)):
+            nearest_interp = NearestNDInterpolator(self.xys, self.zs)
+            nan_indices = np.isnan(border_z)
+            border_z[nan_indices] = nearest_interp(
+                border_points[nan_indices, 0], border_points[nan_indices, 1]
+            )
+
+        # Combine original elevation points with the border points
+        all_x = np.append(self.xys[:, 0], border_points[:, 0])
+        all_y = np.append(self.xys[:, 1], border_points[:, 1])
+        all_z = np.append(self.zs, border_z)
+
+        # Update the point data arrays with the combined points
+        self.xys = np.column_stack([all_x, all_y])
+        self.zs = all_z
+
+        cxmin, cxmax = self.x_min, self.x_max = min(self.xys[:, 0]), max(self.xys[:, 0])
+        cymin, cymax = self.y_min, self.y_max = min(self.xys[:, 1]), max(self.xys[:, 1])
 
         if cxcenter is None or cycenter is None:
             raise ValueError("GreenCenter not found in the data")
-        xvalues, self.x_min, self.x_max = get_unique_ascending(xarr)
-        yvalues, self.y_min, self.y_max = get_unique_ascending(yarr)
+        xvalues, _, _ = get_unique_ascending(xarr)
+        yvalues, _, _ = get_unique_ascending(yarr)
         _, self.z_min, self.z_max = get_unique_ascending(zarr)
-        _, cxmin, cxmax = get_unique_ascending(cxarr)
-        _, cymin, cymax = get_unique_ascending(cyarr)
 
         xdup = get_duplicated_values(xvalues, xarr)
         ydup = get_duplicated_values(yvalues, yarr)
-
-        xys = []
-        for x, y in zip(xarr, yarr):
-            xys.append([x, y])
-
-        elevation_points = []
-        for x, y, z in zip(xarr, yarr, zarr):
-            elevation_points.append([x, y, z])
-
-        current_ratio = calculate_elevation_within_border_ratio(self.green_border, xys)
-        if current_ratio < elevation_in_border_ratio:
-            logger.warning(f"Course {course_index} hole {hole_index} : Elevation within green border ratio {current_ratio:.2f} is less than the threshold {elevation_in_border_ratio:.2f}. ")
-            self.green_border = MultiPoint(xys).convex_hull
 
         # Init board
         x_count = len(xdup)
@@ -115,7 +155,8 @@ class GreenVisualizer3D(GreenVisualizer2D):
             points = feature['geometry']['coordinates']
             try:
                 # Skip points outside the green border
-                if not self.green_border.contains(Point(points[:2])):
+                x, y = transform_coordinates(points[:2])
+                if not self.green_border.contains(Point(x, y)):
                     continue
 
                 # Get grid indices
@@ -125,7 +166,6 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 # Update board and point index
                 board[x_index][y_index] = point_index
                 point_index += 1
-
 
             except Exception:
                 pass
@@ -142,7 +182,6 @@ class GreenVisualizer3D(GreenVisualizer2D):
                     return (z_first + z_second) / 2
             return points_stored[idx][2]
 
-        adjusted_count = 0
         for _ in range(PEAK_ADJUST_LOOP_COUNT):
             count = 0
             for i in range(x_count):
@@ -157,10 +196,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
                             count += 1
             if count == 0:  # not adjusted
                 break
-            adjusted_count += count
-        logger.info(f"Adjusted {adjusted_count} points to reduce peaks.")
 
-        # Transform coordinates & construct texture coordinates
         for i in range(point_index):
             points = points_stored[i]
             # Transform coordinates and update total points and texcoords
@@ -246,7 +282,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
             dx, dy = delta
             px += dx
             py += dy
-            if 0 <= px < x_count and 0 <= py < y_count and board[px][py] >= 0:
+            if px >= 0 and px < x_count and py >= 0 and py < y_count and board[px][py] >= 0:
                 return True, board[px][py]
             return False, -1
 
@@ -255,28 +291,32 @@ class GreenVisualizer3D(GreenVisualizer2D):
         # returns center point of the quad as a second parameter
         # returns guessed z coords
         # (point, z) is in the extended quad
+        # point is in meters
         def check(point, grid_point, d1, d2, d3):
             gx, gy = grid_point
 
             # center point
             index0 = board[gx][gy]
-            x = points_stored[index0][0]
-            y = points_stored[index0][1]
+            sum_x, sum_y = transform_coordinates(points_stored[index0][:2])
             indices = [index0]
             for d in [d1, d2, d3]:
                 is_valid, index = check_valid(grid_point, d)
                 if not is_valid:
                     return False, [0, 0], 0
                 indices.append(index)
-                x += points_stored[index][0]
-                y += points_stored[index][1]
-            x /= 4
-            y /= 4
+                x, y = transform_coordinates(points_stored[index][:2])
+                sum_x += x
+                sum_y += y
+            sum_x = sum_x / 4
+            sum_y = sum_y / 4
 
             # cross product of index0, index1, index3
-            pa = np.asarray(points_stored[index0])
-            pb = np.asarray(points_stored[indices[1]])
-            pc = np.asarray(points_stored[indices[3]])
+            x, y = transform_coordinates(points_stored[index0][:2])
+            pa = np.asarray([x, y, points_stored[index0][2]])
+            x, y = transform_coordinates(points_stored[indices[1]][:2])
+            pb = np.asarray([x, y, points_stored[indices[1]][2]])
+            x, y = transform_coordinates(points_stored[indices[3]][:2])
+            pc = np.asarray([x, y, points_stored[indices[3]][2]])
             va = pa - pc
             vb = pb - pc
             crss = np.cross(va, vb)  # crss = [A, B, C],  Ax + By + Cz + D = 0 is the equation of the plain
@@ -284,7 +324,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
 
             z = -(point[0] * crss[0] + point[1] * crss[1] + D) / crss[2]
 
-            return True, [x, y], z
+            return True, [sum_x, sum_y], z
 
         #        |
         #     2  |  1
@@ -292,6 +332,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
         #     3  |  4
         #        |
         # check 4 quads
+        # point is in meters
         def guess_elevation(point, grid_point):
             index = 0
             result = 0
@@ -317,7 +358,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
         side_index = 0
 
         # Fill the remaining parts near the edge
-        points = [list(coord) for coord in self.green_border.exterior.coords]
+        points = [list(coord) for coord in self.green_border.exterior.coords] # changed to meters
         point_count = len(points)
 
         for i in range(point_count):
@@ -331,7 +372,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 # add a triangle
                 nindex = nearest_index(points[i], edge_points, xdup, ydup)
                 z = guess_elevation(points[i], edge_points[nindex])
-                cx, cy = transform_coordinates(points[i])
+                cx, cy = points[i]
                 total_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z]
                 total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
                 next_index = point_index_store if i + 1 == point_count else point_index + 1
@@ -364,7 +405,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
 
                     nindex = nearest_index(start_point, edge_points, xdup, ydup)
                     z = guess_elevation(start_point, edge_points[nindex])
-                    cx, cy = transform_coordinates(start_point)
+                    cx, cy = start_point
                     total_points += [(cx - cxcenter) * SCALER, (cy - cycenter) * SCALER, z]
                     total_texcoords += [(cx - cxmin) / (cxmax - cxmin), 1.0 - (cy - cymin) / (cymax - cymin)]
 
@@ -399,6 +440,11 @@ class GreenVisualizer3D(GreenVisualizer2D):
         # Check Winding order & Flip if necessary
         total_indices = check_winding_order_and_reverse(total_points, total_indices)
 
+        # Update z_min
+        self.z_min = min(side_points[2::6])
+        for i in range(len(side_points) // 6):
+            side_points[i*6+5] = self.z_min
+
         return total_points, total_indices, total_texcoords, side_points, side_indices
 
     def plot_holes(self, course_index, hole_index):
@@ -416,7 +462,6 @@ class GreenVisualizer3D(GreenVisualizer2D):
             # Get mesh data from json file
         vertices, indices, texcoords, vertices2, indices2 = self.get_model_data(
             f"testcases/input/course{course_index}/{hole_index}.json",
-            course_index,
             hole_index
         )
 
@@ -523,6 +568,8 @@ class GreenVisualizer3D(GreenVisualizer2D):
 
         metadata_output_name = f"testcases/output/green_3d_metadata/course{course_index}/{hole_index}.json"
         os.makedirs(os.path.dirname(metadata_output_name), exist_ok=True)
+        self.x_max, self.y_max = reverse_transform_coordinates([self.x_max, self.y_max])
+        self.x_min, self.y_min = reverse_transform_coordinates([self.x_min, self.y_min])
 
         metadata = {
             "EPSG": "4326",

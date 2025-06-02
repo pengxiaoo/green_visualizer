@@ -93,6 +93,15 @@ def transform_coordinates(coords):
         return np.array([x, y])
     else:
         return np.array([transformer.transform(lon, lat) for lon, lat in coords])
+
+def reverse_transform_coordinates(coords):
+    reverse_transformer = Transformer.from_crs(output_crs, input_crs, always_xy=True)
+    if isinstance(coords, list):
+        coords = np.array(coords)
+    if coords.ndim == 1:
+        lon, lat = reverse_transformer.transform(coords[0], coords[1])
+        return lon, lat
+
 # Returns an array, sorted, remove duplicated
 # returns min and max together
 # [5, 1, 3, 2, 1, 4] -> [1, 2, 3, 4, 5]
@@ -116,7 +125,7 @@ def nearest_index(pnt, edges, xdup, ydup):
     result = None
 
     for i, edge in enumerate(edges):
-        edge_point = [xdup[edge[0]], ydup[edge[1]]]
+        edge_point = transform_coordinates([xdup[edge[0]], ydup[edge[1]]])
         d = math.dist(pnt, edge_point)
         if d < min_dist:
             min_dist = d
