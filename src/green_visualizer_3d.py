@@ -282,7 +282,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
             dx, dy = delta
             px += dx
             py += dy
-            if px >= 0 and px < x_count and py >= 0 and py < y_count and board[px][py] >= 0:
+            if 0 <= px < x_count and 0 <= py < y_count and board[px][py] >= 0:
                 return True, board[px][py]
             return False, -1
 
@@ -291,7 +291,6 @@ class GreenVisualizer3D(GreenVisualizer2D):
         # returns center point of the quad as a second parameter
         # returns guessed z coords
         # (point, z) is in the extended quad
-        # point is in meters
         def check(point, grid_point, d1, d2, d3):
             gx, gy = grid_point
 
@@ -307,8 +306,8 @@ class GreenVisualizer3D(GreenVisualizer2D):
                 x, y = transform_coordinates(points_stored[index][:2])
                 sum_x += x
                 sum_y += y
-            sum_x = sum_x / 4
-            sum_y = sum_y / 4
+            sum_x /= 4
+            sum_y /= 4
 
             # cross product of index0, index1, index3
             x, y = transform_coordinates(points_stored[index0][:2])
@@ -358,7 +357,7 @@ class GreenVisualizer3D(GreenVisualizer2D):
         side_index = 0
 
         # Fill the remaining parts near the edge
-        points = [list(coord) for coord in self.green_border.exterior.coords] # changed to meters
+        points = [list(coord) for coord in self.green_border.exterior.coords]
         point_count = len(points)
 
         for i in range(point_count):
