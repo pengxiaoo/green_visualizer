@@ -58,7 +58,7 @@ python src/plot_green_3d.py
 - drag the *.glb file into the page(for example [2.glb](./model-examples/2.glb))
 - drag to rotate the 3d model
 
-<img src="images/visualize_glb_model.png" width="300">
+<img src="images/visualize_glb_model.png" width="600">
 
 
 ### Step 4. Generate Green 3d models in usdz format
