@@ -34,3 +34,31 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
+
+## Test
+
+### Step 1. Generate Green 2d png files
+
+the script will load coordinates from testcases/input and generate png files in testcases/output/green_2d
+```bash
+python src/plot_green_2d.py 
+```
+
+### Step 2. Generate Green 3d models in glb format
+
+the script will load coordinates from testcases/input and png files generated in above step, and generate 3d models in testcases/output/green_3d
+
+```bash
+python src/plot_green_3d.py 
+```
+
+### Step 3. Visualize/Validate the *.glb files
+
+- open https://gltf-viewer.donmccurdy.com/
+- drag the *.glb file into the page(for example [2.glb](./model-examples/2.glb))
+- drag to rotate the 3d model
+
+<img src="images/visualize_glb_model.png" width="300">
+
+
+### Step 4. Generate Green 3d models in usdz format
