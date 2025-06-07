@@ -120,3 +120,15 @@ How to convert:
 ```bash
 blender --background --python convert.py -- /path/to/your/1.glb /path/to/converted.usdz
 ```
+
+#### On CentOS
+
+https://snapcraft.io/install/blender/centos
+
+```bash
+sudo yum install epel-release
+sudo yum install snapd
+sudo systemctl enable --now snapd.socket
+sudo ln -s /var/lib/snapd/snap /snap
+sudo snap install blender --classic
+```
