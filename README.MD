@@ -62,3 +62,61 @@ python src/plot_green_3d.py
 
 
 ### Step 4. Generate Green 3d models in usdz format
+
+We are using [Blender](https://www.blender.org) to convert from glb to usdz.
+
+Prepare a python program for blender to use to convert from glb to usdz
+
+```python
+import bpy
+import sys
+
+input_path = sys.argv[-2]
+output_path = sys.argv[-1]
+
+bpy.ops.wm.read_homefile(use_empty=True)
+bpy.ops.import_scene.gltf(filepath=input_path)
+bpy.ops.wm.usd_export(filepath=output_path)
+```
+
+Save it as `convert.py`.
+
+You don't have to install the python package `bpy`. blender will prepare it.
+
+#### On MacOS
+
+```bash
+#!/bin/bash
+
+set -e
+
+echo "🔧 Installing Blender..."
+brew install --cask blender
+blender=/Applications/Blender.app/Contents/MacOS/Blender
+
+echo "✅ Blender installed at: $(which blender)"
+${blender} --version
+
+```
+
+How to convert:
+
+```bash
+blender=/Applications/Blender.app/Contents/MacOS/Blender
+${blender} --background --python convert.py -- /path/to/your/1.glb /path/to/converted.usdz
+```
+
+#### On Ubuntu
+
+```bash
+sudo apt update
+sudo apt install snapd
+sudo systemctl enable --now snapd.socket
+sudo snap install blender --classic
+```
+
+How to convert:
+
+```bash
+blender --background --python convert.py -- /path/to/your/1.glb /path/to/converted.usdz
+```
