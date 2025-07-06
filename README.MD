@@ -69,13 +69,28 @@ Prepare a python program for blender to use to convert from glb to usdz
 
 ```python
 import bpy
+from mathutils import Matrix
 import sys
 
 input_path = sys.argv[-2]
 output_path = sys.argv[-1]
 
+def fix_z_axis():
+    swap_matrix = Matrix((
+        (-1, 0, 0, 0),
+        (0, 0, 1, 0),
+        (0, -1, 0, 0),
+        (0, 0, 0, 1)
+        ))
+
+    for obj in bpy.context.selected_objects:
+        obj.matrix_world = swap_matrix @ obj.matrix_world
+
 bpy.ops.wm.read_homefile(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=input_path)
+bpy.ops.object.select_all(action='SELECT')
+fix_z_axis()
+bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 bpy.ops.wm.usd_export(filepath=output_path)
 ```
 
